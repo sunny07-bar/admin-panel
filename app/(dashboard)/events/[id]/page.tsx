@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { compressImageToWebP } from "@/lib/utils/imageCompression";
+import { floridaDateTimeLocalToUTC, utcToFloridaDateTimeLocal } from "@/lib/utils/timezone";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
@@ -23,7 +24,6 @@ export default function EditEventPage() {
     event_start: "",
     event_end: "",
     location: "",
-    is_featured: false,
     base_ticket_price: "",
     ticket_currency: "USD",
   });
@@ -53,14 +53,24 @@ export default function EditEventPage() {
       }
 
       if (data) {
+        // Convert UTC dates from database to Florida datetime-local format
+        const eventStartLocal = data.event_start ? utcToFloridaDateTimeLocal(data.event_start) : ""
+        const eventEndLocal = data.event_end ? utcToFloridaDateTimeLocal(data.event_end) : ""
+        
+        console.log('EditEventPage - Loaded from DB:', {
+          'Stored in DB (UTC)': data.event_start,
+          'Converted to Florida (for input)': eventStartLocal,
+          'Stored end in DB (UTC)': data.event_end,
+          'Converted end to Florida (for input)': eventEndLocal,
+        })
+        
         setFormData({
           title: data.title || "",
           slug: data.slug || "",
           description: data.description || "",
-          event_start: data.event_start ? new Date(data.event_start).toISOString().slice(0, 16) : "",
-          event_end: data.event_end ? new Date(data.event_end).toISOString().slice(0, 16) : "",
+          event_start: eventStartLocal,
+          event_end: eventEndLocal,
           location: data.location || "",
-          is_featured: data.is_featured || false,
           base_ticket_price: data.base_ticket_price ? String(data.base_ticket_price) : "",
           ticket_currency: data.ticket_currency || "USD",
         });
@@ -108,11 +118,19 @@ export default function EditEventPage() {
       if (imageFile) {
         // Delete old image if exists
         if (originalImagePath) {
-          await supabase.storage.from("events").remove([originalImagePath]);
+          // Clean the path: remove URL parts if present, otherwise use as-is
+          let cleanPath = originalImagePath;
+          if (originalImagePath.includes('/storage/v1/object/public/events/')) {
+            cleanPath = originalImagePath.split('/storage/v1/object/public/events/')[1];
+          }
+          cleanPath = cleanPath.split('?')[0];
+          
+          console.log("Deleting old event image:", cleanPath, "from bucket: events");
+          await supabase.storage.from("events").remove([cleanPath]);
         }
 
-        // Compress and convert to WebP
-        const compressedFile = await compressImageToWebP(imageFile, 200);
+        // Compress and convert to WebP (under 100KB, maintains quality)
+        const compressedFile = await compressImageToWebP(imageFile);
         const fileName = `${Math.random()}.webp`;
         const filePath = `events/${fileName}`;
 
@@ -124,12 +142,23 @@ export default function EditEventPage() {
         imagePath = filePath;
       }
 
+      // Convert Florida datetime to UTC for database storage
+      const eventStartUTC = formData.event_start ? floridaDateTimeLocalToUTC(formData.event_start) : null
+      const eventEndUTC = formData.event_end ? floridaDateTimeLocalToUTC(formData.event_end) : null
+
+      console.log('Updating event:', {
+        event_start_local: formData.event_start,
+        event_start_utc: eventStartUTC,
+        event_end_local: formData.event_end,
+        event_end_utc: eventEndUTC,
+      })
+
       const { error } = await supabase
         .from("events")
         .update({
           ...formData,
-          event_start: formData.event_start ? new Date(formData.event_start).toISOString() : null,
-          event_end: formData.event_end ? new Date(formData.event_end).toISOString() : null,
+          event_start: eventStartUTC,
+          event_end: eventEndUTC,
           image_path: imagePath,
           base_ticket_price: formData.base_ticket_price !== "" && formData.base_ticket_price !== null && !isNaN(parseFloat(formData.base_ticket_price)) ? parseFloat(formData.base_ticket_price) : null,
           ticket_currency: formData.ticket_currency || "USD",
@@ -231,7 +260,7 @@ export default function EditEventPage() {
 
             <div>
               <Label htmlFor="event_start">
-                Start Date & Time <span className="text-red-500">*</span>
+                Start Date & Time (Florida Time) <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="event_start"
@@ -240,16 +269,22 @@ export default function EditEventPage() {
                 onChange={(e) => setFormData({ ...formData, event_start: e.target.value })}
                 required
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Enter time in Florida timezone (EST/EDT, UTC-5)
+              </p>
             </div>
 
             <div>
-              <Label htmlFor="event_end">End Date & Time</Label>
+              <Label htmlFor="event_end">End Date & Time (Florida Time)</Label>
               <Input
                 id="event_end"
                 type="datetime-local"
                 value={formData.event_end}
                 onChange={(e) => setFormData({ ...formData, event_end: e.target.value })}
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Enter time in Florida timezone (EST/EDT, UTC-5)
+              </p>
             </div>
 
             <div>
@@ -300,17 +335,6 @@ export default function EditEventPage() {
               />
             </div>
 
-            <div>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={formData.is_featured}
-                  onChange={(e) => setFormData({ ...formData, is_featured: e.target.checked })}
-                  className="rounded border-gray-300"
-                />
-                <span className="text-theme-sm text-gray-700 dark:text-gray-300">Featured</span>
-              </label>
-            </div>
           </div>
         </div>
 

@@ -68,7 +68,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="grid grid-cols-12 gap-4 md:gap-6">
-      <div className="col-span-12 space-y-6 xl:col-span-7">
+      <div className="col-span-12 space-y-6 xl:col-span-7 animate-fade-in-up">
         <EcommerceMetrics 
           totalOrders={totalOrders}
           totalReservations={totalReservations}
@@ -78,7 +78,7 @@ export default async function DashboardPage() {
         <MonthlySalesChart monthlyRevenue={monthlyRevenue} />
       </div>
 
-      <div className="col-span-12 xl:col-span-5">
+      <div className="col-span-12 xl:col-span-5 animate-fade-in-up stagger-1">
         <MonthlyTarget 
           targetProgress={targetProgress}
           currentRevenue={currentRevenue}
@@ -86,15 +86,15 @@ export default async function DashboardPage() {
         />
       </div>
 
-      <div className="col-span-12">
+      <div className="col-span-12 animate-fade-in-up stagger-2">
         <StatisticsChart monthlyRevenue={monthlyRevenue} />
       </div>
 
-      <div className="col-span-12 xl:col-span-5">
+      <div className="col-span-12 xl:col-span-5 animate-fade-in-up stagger-3">
         <DemographicCard />
       </div>
 
-      <div className="col-span-12 xl:col-span-7">
+      <div className="col-span-12 xl:col-span-7 animate-fade-in-up stagger-4">
         <RecentOrders orders={recentOrders} />
       </div>
     </div>

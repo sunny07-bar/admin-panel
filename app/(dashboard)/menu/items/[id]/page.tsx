@@ -81,11 +81,20 @@ export default function EditMenuItemPage() {
       if (imageFile) {
         // Delete old image if exists
         if (originalImagePath) {
-          await supabase.storage.from("menu-items").remove([originalImagePath]);
+          // Clean the path: remove URL parts if present, otherwise use as-is
+          let cleanPath = originalImagePath;
+          if (originalImagePath.includes('/storage/v1/object/public/menu-items/')) {
+            cleanPath = originalImagePath.split('/storage/v1/object/public/menu-items/')[1];
+          }
+          cleanPath = cleanPath.split('?')[0];
+          
+          console.log("Deleting old menu item image:", cleanPath, "from bucket: menu-items");
+          await supabase.storage.from("menu-items").remove([cleanPath]);
         }
 
         // Compress and convert to WebP
-        const compressedFile = await compressImageToWebP(imageFile, 200);
+        // Compress and convert to WebP (under 100KB, maintains quality)
+        const compressedFile = await compressImageToWebP(imageFile);
         const fileName = `${Math.random()}.webp`;
         const filePath = `items/${fileName}`;
 

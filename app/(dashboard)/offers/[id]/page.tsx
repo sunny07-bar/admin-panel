@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { compressImageToWebP } from "@/lib/utils/imageCompression";
+import { floridaDateTimeLocalToUTC, utcToFloridaDateTimeLocal } from "@/lib/utils/timezone";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
@@ -52,8 +53,8 @@ export default function EditOfferPage() {
           offer_type: data.offer_type || "percentage_discount",
           discount_value: data.discount_value?.toString() || "",
           scope: data.scope || "entire_order",
-          start_date: data.start_date ? new Date(data.start_date).toISOString().slice(0, 16) : "",
-          end_date: data.end_date ? new Date(data.end_date).toISOString().slice(0, 16) : "",
+          start_date: data.start_date ? utcToFloridaDateTimeLocal(data.start_date) : "",
+          end_date: data.end_date ? utcToFloridaDateTimeLocal(data.end_date) : "",
           min_order_amount: data.min_order_amount?.toString() || "",
           is_active: data.is_active ?? true,
         });
@@ -82,11 +83,20 @@ export default function EditOfferPage() {
       if (imageFile) {
         // Delete old image if exists
         if (originalImagePath) {
-          await supabase.storage.from("offers").remove([originalImagePath]);
+          // Clean the path: remove URL parts if present, otherwise use as-is
+          let cleanPath = originalImagePath;
+          if (originalImagePath.includes('/storage/v1/object/public/offers/')) {
+            cleanPath = originalImagePath.split('/storage/v1/object/public/offers/')[1];
+          }
+          cleanPath = cleanPath.split('?')[0];
+          
+          console.log("Deleting old offer image:", cleanPath, "from bucket: offers");
+          await supabase.storage.from("offers").remove([cleanPath]);
         }
 
         // Compress and convert to WebP
-        const compressedFile = await compressImageToWebP(imageFile, 200);
+        // Compress and convert to WebP (under 100KB, maintains quality)
+        const compressedFile = await compressImageToWebP(imageFile);
         const fileName = `${Math.random()}.webp`;
         const filePath = `offers/${fileName}`;
 
@@ -103,8 +113,8 @@ export default function EditOfferPage() {
         .update({
           ...formData,
           discount_value: parseFloat(formData.discount_value),
-          start_date: formData.start_date ? new Date(formData.start_date).toISOString() : null,
-          end_date: formData.end_date ? new Date(formData.end_date).toISOString() : null,
+          start_date: formData.start_date ? floridaDateTimeLocalToUTC(formData.start_date) : null,
+          end_date: formData.end_date ? floridaDateTimeLocalToUTC(formData.end_date) : null,
           min_order_amount: formData.min_order_amount ? parseFloat(formData.min_order_amount) : null,
           image_path: imagePath,
         })
@@ -184,23 +194,29 @@ export default function EditOfferPage() {
             </div>
 
             <div>
-              <Label htmlFor="start_date">Start Date</Label>
+              <Label htmlFor="start_date">Start Date & Time (Florida Time)</Label>
               <Input
                 id="start_date"
                 type="datetime-local"
                 value={formData.start_date}
                 onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Enter time in Florida timezone (EST/EDT, UTC-5)
+              </p>
             </div>
 
             <div>
-              <Label htmlFor="end_date">End Date</Label>
+              <Label htmlFor="end_date">End Date & Time (Florida Time)</Label>
               <Input
                 id="end_date"
                 type="datetime-local"
                 value={formData.end_date}
                 onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Enter time in Florida timezone (EST/EDT, UTC-5)
+              </p>
             </div>
 
             <div>

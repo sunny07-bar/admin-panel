@@ -22,6 +22,7 @@ export default function NewGalleryImagePage() {
     is_active: true,
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,27 +35,51 @@ export default function NewGalleryImagePage() {
         return;
       }
 
-      // Compress and convert to WebP
-      const compressedFile = await compressImageToWebP(imageFile, 200);
-      const fileName = `${Math.random()}.webp`;
+      console.log("Starting image upload process...");
+      console.log("Original file:", imageFile.name, imageFile.size, "bytes");
+
+      // Compress and convert to WebP (under 100KB, maintains quality)
+      console.log("Compressing image...");
+      const compressedFile = await compressImageToWebP(imageFile);
+      console.log("Compressed file:", compressedFile.name, compressedFile.size, "bytes");
+
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.webp`;
       const filePath = `${formData.category}/${fileName}`;
+      console.log("Uploading to path:", filePath);
 
-      const { error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from("gallery")
-        .upload(filePath, compressedFile);
+        .upload(filePath, compressedFile, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error("Upload error:", uploadError);
+        throw new Error(`Failed to upload image: ${uploadError.message}`);
+      }
+
+      console.log("Upload successful:", uploadData);
 
       const { error } = await supabase.from("gallery_images").insert({
         ...formData,
         image_path: filePath,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Database error:", error);
+        // Try to delete the uploaded file if database insert fails
+        if (uploadData?.path) {
+          await supabase.storage.from("gallery").remove([uploadData.path]);
+        }
+        throw new Error(`Failed to save image record: ${error.message}`);
+      }
 
+      console.log("Gallery image saved successfully");
       router.push("/gallery");
     } catch (error: any) {
-      alert(error.message);
+      console.error("Error details:", error);
+      alert(error.message || "An error occurred while uploading the image. Please check the console for details.");
     } finally {
       setLoading(false);
     }
@@ -74,8 +99,31 @@ export default function NewGalleryImagePage() {
                 type="file"
                 accept="image/*"
                 required
-                onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setImageFile(file);
+                  if (file) {
+                    // Preview image
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                      setImagePreview(e.target?.result as string);
+                    };
+                    reader.readAsDataURL(file);
+                  } else {
+                    setImagePreview(null);
+                  }
+                }}
               />
+              {imagePreview && (
+                <div className="mt-4">
+                  <Label>Preview</Label>
+                  <img 
+                    src={imagePreview} 
+                    alt="Preview" 
+                    className="mt-2 h-48 w-48 rounded object-cover border border-gray-300 dark:border-gray-700" 
+                  />
+                </div>
+              )}
             </div>
 
             <div>

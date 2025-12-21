@@ -194,15 +194,30 @@ export default function EditSpecialHoursPage() {
     try {
       const id = params.id as string;
 
+      // Ensure date is in YYYY-MM-DD format and times are strings
+      const dateToSave = general.date; // Should already be in YYYY-MM-DD format
+      const timeFromToSave = general.time_from ? String(general.time_from).trim() : null;
+      const timeToToSave = general.time_to ? String(general.time_to).trim() : null;
+      
+      console.log('Updating special hours:', {
+        id,
+        date: dateToSave,
+        date_type: typeof dateToSave,
+        time_from: timeFromToSave,
+        time_from_type: typeof timeFromToSave,
+        time_to: timeToToSave,
+        time_to_type: typeof timeToToSave,
+      });
+
       // Update special hours
       const { error: shError } = await supabase
         .from("special_hours")
         .update({
           title: general.title,
-          date: general.date,
+          date: dateToSave,
           is_open: general.is_open,
-          time_from: general.time_from || null,
-          time_to: general.time_to || null,
+          time_from: timeFromToSave,
+          time_to: timeToToSave,
           note: general.note || null,
           waitlist_enabled: general.waitlist_enabled,
           status: general.status,

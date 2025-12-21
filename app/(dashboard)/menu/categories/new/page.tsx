@@ -19,6 +19,7 @@ export default function NewCategoryPage() {
     description: "",
     display_order: 100,
     is_active: true,
+    category_type: "food" as "food" | "drink",
   });
 
   const handleSlugChange = (name: string) => {
@@ -99,6 +100,22 @@ export default function NewCategoryPage() {
                   setFormData({ ...formData, display_order: parseInt(e.target.value) })
                 }
               />
+            </div>
+
+            <div>
+              <Label htmlFor="category_type">Category Type *</Label>
+              <select
+                id="category_type"
+                value={formData.category_type}
+                onChange={(e) =>
+                  setFormData({ ...formData, category_type: e.target.value as "food" | "drink" })
+                }
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-theme-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="food">Food</option>
+                <option value="drink">Drink</option>
+              </select>
             </div>
           </div>
 

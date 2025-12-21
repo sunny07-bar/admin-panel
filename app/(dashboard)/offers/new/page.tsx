@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { compressImageToWebP } from "@/lib/utils/imageCompression";
+import { floridaDateTimeLocalToUTC } from "@/lib/utils/timezone";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
@@ -36,7 +37,8 @@ export default function NewOfferPage() {
 
       if (imageFile) {
         // Compress and convert to WebP
-        const compressedFile = await compressImageToWebP(imageFile, 200);
+        // Compress and convert to WebP (under 100KB, maintains quality)
+        const compressedFile = await compressImageToWebP(imageFile);
         const fileName = `${Math.random()}.webp`;
         const filePath = `offers/${fileName}`;
 
@@ -51,8 +53,8 @@ export default function NewOfferPage() {
       const { error } = await supabase.from("offers").insert({
         ...formData,
         discount_value: parseFloat(formData.discount_value),
-        start_date: formData.start_date ? new Date(formData.start_date).toISOString() : null,
-        end_date: formData.end_date ? new Date(formData.end_date).toISOString() : null,
+        start_date: formData.start_date ? floridaDateTimeLocalToUTC(formData.start_date) : null,
+        end_date: formData.end_date ? floridaDateTimeLocalToUTC(formData.end_date) : null,
         min_order_amount: formData.min_order_amount ? parseFloat(formData.min_order_amount) : null,
         image_path: imagePath,
       });
@@ -126,23 +128,29 @@ export default function NewOfferPage() {
             </div>
 
             <div>
-              <Label htmlFor="start_date">Start Date</Label>
+              <Label htmlFor="start_date">Start Date & Time (Florida Time)</Label>
               <Input
                 id="start_date"
                 type="datetime-local"
                 value={formData.start_date}
                 onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Enter time in Florida timezone (EST/EDT, UTC-5)
+              </p>
             </div>
 
             <div>
-              <Label htmlFor="end_date">End Date</Label>
+              <Label htmlFor="end_date">End Date & Time (Florida Time)</Label>
               <Input
                 id="end_date"
                 type="datetime-local"
                 value={formData.end_date}
                 onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Enter time in Florida timezone (EST/EDT, UTC-5)
+              </p>
             </div>
 
             <div>

@@ -25,7 +25,7 @@ interface RecentOrdersProps {
 
 export default function RecentOrders({ orders = [] }: RecentOrdersProps) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-3 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-3 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6 card-hover-lift transition-all duration-300">
       <div className="flex flex-col gap-2 mb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
@@ -125,8 +125,8 @@ export default function RecentOrders({ orders = [] }: RecentOrdersProps) {
                 </TableCell>
               </TableRow>
             ) : (
-              orders.map((order) => (
-                <TableRow key={order.id} className="">
+              orders.map((order, index) => (
+                <TableRow key={order.id} className="table-row-hover" style={{ animationDelay: `${index * 0.05}s` }}>
                   <TableCell className="py-3">
                     <Link href={`/orders/${order.id}`} className="font-medium text-gray-800 text-theme-sm dark:text-white/90 hover:text-brand-500">
                       {order.order_number || `Order ${order.id.slice(0, 8)}`}

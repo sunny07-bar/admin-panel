@@ -21,6 +21,7 @@ export default function EditCategoryPage() {
     description: "",
     display_order: 100,
     is_active: true,
+    category_type: "food" as "food" | "drink",
   });
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export default function EditCategoryPage() {
         description: data.description || "",
         display_order: data.display_order || 100,
         is_active: data.is_active ?? true,
+        category_type: (data.category_type || "food") as "food" | "drink",
       });
     }
     setFetching(false);
@@ -134,6 +136,22 @@ export default function EditCategoryPage() {
                   setFormData({ ...formData, display_order: parseInt(e.target.value) })
                 }
               />
+            </div>
+
+            <div>
+              <Label htmlFor="category_type">Category Type *</Label>
+              <select
+                id="category_type"
+                value={formData.category_type}
+                onChange={(e) =>
+                  setFormData({ ...formData, category_type: e.target.value as "food" | "drink" })
+                }
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-theme-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="food">Food</option>
+                <option value="drink">Drink</option>
+              </select>
             </div>
           </div>
 

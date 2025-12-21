@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { compressImageToWebP } from "@/lib/utils/imageCompression";
+import { convert24To12, convert12To24 } from "@/lib/utils/timeFormat";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
@@ -19,8 +20,8 @@ export default function SettingsPage() {
     email: "",
     address: "",
     logo_path: "",
-    instagram_url: "",
-    facebook_url: "",
+    instagram_user_id: "",
+    facebook_user_id: "",
   });
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -32,7 +33,19 @@ export default function SettingsPage() {
         supabase.from("site_settings").select("*"),
       ]);
 
-      if (hoursResult.data) setOpeningHours(hoursResult.data);
+      if (hoursResult.data) {
+        // Log what we're receiving from database for debugging
+        console.log('Fetched opening hours from database:', hoursResult.data);
+        hoursResult.data.forEach((hour: any) => {
+          console.log(`Weekday ${hour.weekday}:`, {
+            open_time: hour.open_time,
+            close_time: hour.close_time,
+            open_time_type: typeof hour.open_time,
+            close_time_type: typeof hour.close_time,
+          });
+        });
+        setOpeningHours(hoursResult.data);
+      }
       if (settingsResult.data) {
         const settings: any = {};
         settingsResult.data.forEach((s: any) => {
@@ -77,8 +90,8 @@ export default function SettingsPage() {
       
       // Handle logo upload using API route (bypasses RLS)
       if (logoFile) {
-        // Compress and convert to WebP
-        const compressedFile = await compressImageToWebP(logoFile, 200);
+        // Compress and convert to WebP (under 100KB, maintains quality)
+        const compressedFile = await compressImageToWebP(logoFile);
         
         // Upload via API route that uses service role key
         const formData = new FormData();
@@ -150,11 +163,39 @@ export default function SettingsPage() {
   const handleSaveHours = async () => {
     setLoading(true);
     try {
+      // Ensure times are saved as plain strings (HH:mm format) without any conversion
       for (const hour of openingHours) {
-        await supabase.from("opening_hours").upsert(hour);
+        // Ensure open_time and close_time are strings in HH:mm format
+        const dataToSave = {
+          ...hour,
+          open_time: hour.open_time && typeof hour.open_time === 'string' 
+            ? hour.open_time.trim() 
+            : hour.open_time,
+          close_time: hour.close_time && typeof hour.close_time === 'string' 
+            ? hour.close_time.trim() 
+            : hour.close_time,
+        };
+        
+        console.log('Saving opening hour:', {
+          weekday: dataToSave.weekday,
+          open_time: dataToSave.open_time,
+          close_time: dataToSave.close_time,
+          open_time_type: typeof dataToSave.open_time,
+          close_time_type: typeof dataToSave.close_time,
+        });
+        
+        const { data, error } = await supabase.from("opening_hours").upsert(dataToSave).select();
+        
+        if (error) {
+          console.error('Error saving hour:', error);
+          throw error;
+        }
+        
+        console.log('Saved successfully:', data);
       }
       alert("Opening hours saved successfully!");
     } catch (error: any) {
+      console.error('Error in handleSaveHours:', error);
       alert(error.message);
     } finally {
       setLoading(false);
@@ -216,23 +257,23 @@ export default function SettingsPage() {
               />
             </div>
             <div>
-              <Label htmlFor="instagram_url">Instagram URL</Label>
+              <Label htmlFor="instagram_user_id">Instagram User ID</Label>
               <Input
-                id="instagram_url"
-                type="url"
-                value={siteSettings.instagram_url}
-                onChange={(e) => setSiteSettings({ ...siteSettings, instagram_url: e.target.value })}
-                placeholder="https://instagram.com/your-restaurant"
+                id="instagram_user_id"
+                type="text"
+                value={siteSettings.instagram_user_id || ""}
+                onChange={(e) => setSiteSettings({ ...siteSettings, instagram_user_id: e.target.value })}
+                placeholder="your_instagram_username"
               />
             </div>
             <div>
-              <Label htmlFor="facebook_url">Facebook URL</Label>
+              <Label htmlFor="facebook_user_id">Facebook User ID</Label>
               <Input
-                id="facebook_url"
-                type="url"
-                value={siteSettings.facebook_url}
-                onChange={(e) => setSiteSettings({ ...siteSettings, facebook_url: e.target.value })}
-                placeholder="https://facebook.com/your-restaurant"
+                id="facebook_user_id"
+                type="text"
+                value={siteSettings.facebook_user_id || ""}
+                onChange={(e) => setSiteSettings({ ...siteSettings, facebook_user_id: e.target.value })}
+                placeholder="your_facebook_username"
               />
             </div>
             <div>
@@ -266,6 +307,9 @@ export default function SettingsPage() {
 
         <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-dark">
           <h3 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Opening Hours</h3>
+          <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+            Enter times in Florida time (EST/EDT, UTC-5). Times will be displayed on the website in Florida time.
+          </p>
           <div className="space-y-4">
             {weekdays.map((day, index) => {
               const hour = openingHours.find((h) => h.weekday === index) || {
@@ -285,14 +329,16 @@ export default function SettingsPage() {
                   ) : (
                     <>
                       <Input
-                        type="time"
-                        value={hour.open_time}
+                        type="text"
+                        placeholder="9:00 AM"
+                        value={hour.open_time ? convert24To12(hour.open_time) : ''}
                         onChange={(e) => {
+                          const time24 = convert12To24(e.target.value);
                           const updated = openingHours.map((h) =>
-                            h.weekday === index ? { ...h, open_time: e.target.value } : h
+                            h.weekday === index ? { ...h, open_time: time24 } : h
                           );
                           if (!updated.find((h) => h.weekday === index)) {
-                            updated.push({ ...hour, open_time: e.target.value });
+                            updated.push({ ...hour, open_time: time24 });
                           }
                           setOpeningHours(updated);
                         }}
@@ -300,14 +346,16 @@ export default function SettingsPage() {
                       />
                       <span className="text-theme-sm text-gray-600 dark:text-gray-400">to</span>
                       <Input
-                        type="time"
-                        value={hour.close_time}
+                        type="text"
+                        placeholder="10:00 PM"
+                        value={hour.close_time ? convert24To12(hour.close_time) : ''}
                         onChange={(e) => {
+                          const time24 = convert12To24(e.target.value);
                           const updated = openingHours.map((h) =>
-                            h.weekday === index ? { ...h, close_time: e.target.value } : h
+                            h.weekday === index ? { ...h, close_time: time24 } : h
                           );
                           if (!updated.find((h) => h.weekday === index)) {
-                            updated.push({ ...hour, close_time: e.target.value });
+                            updated.push({ ...hour, close_time: time24 });
                           }
                           setOpeningHours(updated);
                         }}

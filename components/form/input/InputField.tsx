@@ -54,34 +54,50 @@ const Input: FC<InputProps> = ({
   }
 
   // Convert value to string for HTML input (HTML inputs always use strings)
+  // For file inputs, don't use value prop (file inputs are uncontrolled)
+  const isFileInput = type === "file";
+  
   const stringValue = value === null || value === undefined 
     ? "" 
     : typeof value === "number" 
       ? String(value) 
       : value;
 
+  const defaultStringValue = defaultValue === null || defaultValue === undefined 
+    ? "" 
+    : typeof defaultValue === "number" 
+      ? String(defaultValue) 
+      : defaultValue;
+
+  // Build input props conditionally for file vs other inputs
+  const inputProps: any = {
+    type,
+    id,
+    name,
+    placeholder: !isFileInput ? placeholder : undefined, // File inputs don't use placeholder
+    onChange,
+    min,
+    max,
+    step,
+    disabled,
+    className: inputClasses,
+    accept,
+    required,
+  };
+
+  // Only add value/defaultValue for non-file inputs
+  if (!isFileInput) {
+    if (defaultValue !== undefined && defaultValue !== null) {
+      inputProps.defaultValue = defaultStringValue;
+    }
+    if (value !== undefined && value !== null) {
+      inputProps.value = stringValue;
+    }
+  }
+
   return (
     <div className="relative">
-      <input
-        type={type}
-        id={id}
-        name={name}
-        placeholder={placeholder}
-        defaultValue={defaultValue === null || defaultValue === undefined 
-          ? "" 
-          : typeof defaultValue === "number" 
-            ? String(defaultValue) 
-            : defaultValue}
-        value={stringValue}
-        onChange={onChange}
-        min={min}
-        max={max}
-        step={step}
-        disabled={disabled}
-        className={inputClasses}
-        accept={accept}
-        required={required}
-      />
+      <input {...inputProps} />
 
       {/* Optional Hint Text */}
       {hint && (

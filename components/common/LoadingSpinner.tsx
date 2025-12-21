@@ -1,26 +1,8 @@
-"use client";
+'use client'
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@clerk/nextjs';
-
-export default function HomePage() {
-  const { isLoaded, userId } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    
-    if (userId) {
-      router.push('/dashboard');
-    } else {
-      router.push('/login');
-    }
-  }, [isLoaded, userId, router]);
-
-  // Show loading state while checking auth
+export default function LoadingSpinner() {
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-900">
+    <div className="flex items-center justify-center min-h-[400px]">
       <div className="relative w-20 h-20">
         {/* Outer ring */}
         <div className="absolute inset-0 border-4 border-brand-500/20 rounded-full"></div>
@@ -46,6 +28,6 @@ export default function HomePage() {
         <div className="absolute inset-0 rounded-full bg-brand-500/10 animate-ping"></div>
       </div>
     </div>
-  );
+  )
 }
 

@@ -65,11 +65,20 @@ export default function EditGalleryImagePage() {
       if (imageFile) {
         // Delete old image if exists
         if (originalImagePath) {
-          await supabase.storage.from("gallery").remove([originalImagePath]);
+          // Clean the path: remove URL parts if present, otherwise use as-is
+          let cleanPath = originalImagePath;
+          if (originalImagePath.includes('/storage/v1/object/public/gallery/')) {
+            cleanPath = originalImagePath.split('/storage/v1/object/public/gallery/')[1];
+          }
+          cleanPath = cleanPath.split('?')[0];
+          
+          console.log("Deleting old gallery image:", cleanPath, "from bucket: gallery");
+          await supabase.storage.from("gallery").remove([cleanPath]);
         }
 
         // Compress and convert to WebP
-        const compressedFile = await compressImageToWebP(imageFile, 200);
+        // Compress and convert to WebP (under 100KB, maintains quality)
+        const compressedFile = await compressImageToWebP(imageFile);
         const fileName = `${Math.random()}.webp`;
         const filePath = `${formData.category}/${fileName}`;
 

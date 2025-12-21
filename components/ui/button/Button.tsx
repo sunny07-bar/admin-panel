@@ -6,9 +6,9 @@ interface ButtonProps {
   variant?: "primary" | "outline"; // Button variant
   startIcon?: ReactNode; // Icon before the text
   endIcon?: ReactNode; // Icon after the text
-  onClick?: () => void; // Click handler
+  onClick?: (e?: React.MouseEvent<HTMLButtonElement>) => void; // Click handler
   disabled?: boolean; // Disabled state
-  className?: string; // Disabled state
+  className?: string; // Additional CSS classes
   type?: "button" | "submit" | "reset"; // Button type
 }
 
@@ -45,7 +45,11 @@ const Button: React.FC<ButtonProps> = ({
       } ${variantClasses[variant]} ${
         disabled ? "cursor-not-allowed opacity-50" : ""
       }`}
-      onClick={onClick}
+      onClick={(e) => {
+        if (onClick) {
+          onClick(e);
+        }
+      }}
       disabled={disabled}
     >
       {startIcon && <span className="flex items-center">{startIcon}</span>}

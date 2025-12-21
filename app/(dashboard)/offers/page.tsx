@@ -11,6 +11,9 @@ export default function OffersPage() {
   const supabase = createClient();
   const [offers, setOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [offerToDelete, setOfferToDelete] = useState<{ id: string; imagePath: string | null } | null>(null);
 
   useEffect(() => {
     fetchOffers();
@@ -25,24 +28,99 @@ export default function OffersPage() {
     setLoading(false);
   };
 
-  const handleDelete = async (id: string, imagePath: string | null) => {
-    if (!confirm("Are you sure you want to delete this offer?")) return;
+  const handleDeleteClick = (id: string, imagePath: string | null) => {
+    if (deletingId === id || loading) {
+      return;
+    }
+    setOfferToDelete({ id, imagePath });
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!offerToDelete) return;
+    
+    setShowConfirmModal(false);
+    const { id, imagePath } = offerToDelete;
+    setOfferToDelete(null);
+    setDeletingId(id);
 
     try {
-      // Delete from storage
+      setLoading(true);
+      console.log("Starting deletion for offer:", id);
+
+      // Step 1: Delete image from storage
       if (imagePath) {
-        await supabase.storage.from("offers").remove([imagePath]);
+        console.log("Step 1: Deleting image from storage...", imagePath);
+        try {
+          // Clean the path: remove URL parts if present, otherwise use as-is
+          let cleanPath = imagePath;
+          if (imagePath.includes('/storage/v1/object/public/offers/')) {
+            cleanPath = imagePath.split('/storage/v1/object/public/offers/')[1];
+          }
+          // Remove query parameters if any
+          cleanPath = cleanPath.split('?')[0];
+          
+          console.log("Cleaned image path for deletion:", cleanPath);
+          console.log("Using bucket: offers");
+          
+          const { data: deleteData, error: storageError } = await supabase
+            .storage
+            .from("offers")
+            .remove([cleanPath]);
+          
+          if (storageError) {
+            console.error("Error deleting image from storage:", {
+              error: storageError,
+              path: cleanPath,
+              originalPath: imagePath,
+              bucket: "offers"
+            });
+          } else {
+            console.log("Image deleted successfully from storage:", deleteData);
+          }
+        } catch (storageError) {
+          console.error("Exception deleting image from storage:", storageError);
+        }
       }
 
-      // Delete from database
-      const { error } = await supabase.from("offers").delete().eq("id", id);
+      // Step 2: Delete the offer itself
+      console.log("Step 2: Deleting offer...");
+      const { error, data } = await supabase
+        .from("offers")
+        .delete()
+        .eq("id", id)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Delete error details:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw new Error(`Failed to delete offer: ${error.message}. ${error.details || ''} ${error.hint ? `Hint: ${error.hint}` : ''}`);
+      }
 
-      fetchOffers();
+      console.log("Offer deleted successfully:", data);
+
+      // Refresh the offers list
+      await fetchOffers();
+      
+      alert("Offer deleted successfully!");
     } catch (error: any) {
-      alert(error.message);
+      console.error("Delete error:", error);
+      const errorMessage = error?.message || error?.toString() || 'Unknown error occurred';
+      console.error("Full error object:", error);
+      alert(`Error deleting offer: ${errorMessage}\n\nPlease check the browser console for more details.`);
+    } finally {
+      setLoading(false);
+      setDeletingId(null);
     }
+  };
+
+  const handleCancelDelete = () => {
+    setShowConfirmModal(false);
+    setOfferToDelete(null);
   };
 
   if (loading) {
@@ -120,14 +198,22 @@ export default function OffersPage() {
                           Edit
                         </Button>
                       </Link>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDelete(offer.id, offer.image_path)}
-                        className="text-error-500 hover:text-error-600 hover:border-error-500"
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDeleteClick(offer.id, offer.image_path);
+                        }}
+                        disabled={loading || deletingId === offer.id}
+                        className="inline-flex items-center justify-center px-4 py-3 text-sm font-medium rounded-lg border border-gray-300 bg-white text-red-600 hover:bg-red-50 hover:text-red-700 dark:bg-gray-800 dark:text-red-500 dark:border-gray-700 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                        style={{ 
+                          minWidth: '44px',
+                          minHeight: '44px'
+                        }}
                       >
                         <TrashBinIcon className="h-4 w-4" />
-                      </Button>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -136,6 +222,38 @@ export default function OffersPage() {
           </table>
         </div>
       </div>
+
+      {/* Simple Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+              Delete Offer?
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Are you sure you want to delete this offer? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCancelDelete}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleConfirmDelete}
+                disabled={loading}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {loading ? "Deleting..." : "Delete"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

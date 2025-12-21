@@ -48,8 +48,8 @@ export default function NewMenuItemPage() {
       let imagePath = null;
 
       if (imageFile) {
-        // Compress and convert to WebP
-        const compressedFile = await compressImageToWebP(imageFile, 200);
+        // Compress and convert to WebP (under 100KB, maintains quality)
+        const compressedFile = await compressImageToWebP(imageFile);
         const fileName = `${Math.random()}.webp`;
         const filePath = `items/${fileName}`;
 
