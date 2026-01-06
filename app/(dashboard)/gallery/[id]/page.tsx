@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { compressImageToWebP } from "@/lib/utils/imageCompression";
 import { generateUniqueImageFilename } from "@/lib/utils/imageFilename";
+import { getImageUrl } from "@/lib/utils/image-utils";
 import BackButton from "@/components/common/BackButton";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
@@ -49,7 +50,7 @@ export default function EditGalleryImagePage() {
       if (data.image_path) {
         setOriginalImagePath(data.image_path);
           setCurrentImage(
-            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/gallery/${data.image_path}`
+            getImageUrl(data.image_path, 'gallery') || ''
           );
       }
     }

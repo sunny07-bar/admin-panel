@@ -6,6 +6,7 @@ import Link from "next/link";
 import Button from "@/components/ui/button/Button";
 import { PlusIcon, TrashBinIcon } from "@/icons";
 import BackButton from "@/components/common/BackButton";
+import { getImageUrl } from "@/lib/utils/image-utils";
 
 export default function HomeFeaturesPage() {
   const supabase = createClient();
@@ -141,7 +142,7 @@ export default function HomeFeaturesPage() {
                   <td className="px-6 py-4">
                     {feature.image_path ? (
                       <img
-                        src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/home-features/${feature.image_path}`}
+                        src={getImageUrl(feature.image_path, 'home-features') || ''}
                         alt={feature.title || "Feature"}
                         className="h-16 w-16 rounded object-cover"
                       />

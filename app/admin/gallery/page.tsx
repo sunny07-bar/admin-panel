@@ -7,6 +7,7 @@ import Link from "next/link";
 import Button from "@/components/ui/button/Button";
 import { PlusIcon, TrashBinIcon } from "@/icons";
 import BackButton from "@/components/common/BackButton";
+import { getImageUrl } from "@/lib/utils/image-utils";
 
 export default function GalleryPage() {
   const router = useRouter();
@@ -197,7 +198,7 @@ export default function GalleryPage() {
             className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-dark"
           >
             <img
-              src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/gallery/${image.image_path}`}
+              src={getImageUrl(image.image_path, 'gallery') || ''}
               alt={image.caption || "Gallery image"}
               className="h-64 w-full object-cover transition-transform group-hover:scale-105"
               key={`${image.id}-${image.updated_at || Date.now()}`}

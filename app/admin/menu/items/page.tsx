@@ -7,6 +7,7 @@ import Button from "@/components/ui/button/Button";
 import Input from "@/components/form/input/InputField";
 import { PlusIcon, TrashBinIcon } from "@/icons";
 import BackButton from "@/components/common/BackButton";
+import { getImageUrl } from "@/lib/utils/image-utils";
 
 export default function MenuItemsPage() {
   const supabase = createClient();
@@ -250,7 +251,7 @@ export default function MenuItemsPage() {
                   <td className="px-6 py-4">
                     {item.image_path ? (
                       <img
-                        src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/menu-items/${item.image_path}`}
+                        src={getImageUrl(item.image_path, 'menu-items') || ''}
                         alt={item.name}
                         className="h-16 w-16 rounded object-cover"
                         key={`${item.id}-${item.updated_at || Date.now()}`}

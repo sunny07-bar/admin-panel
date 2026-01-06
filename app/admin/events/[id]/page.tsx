@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { compressImageToWebP } from "@/lib/utils/imageCompression";
 import { generateUniqueImageFilename } from "@/lib/utils/imageFilename";
+import { getImageUrl } from "@/lib/utils/image-utils";
 import { floridaDateTimeLocalToUTC, utcToFloridaDateTimeLocal } from "@/lib/utils/timezone";
 import BackButton from "@/components/common/BackButton";
 import Input from "@/components/form/input/InputField";
@@ -103,7 +104,7 @@ export default function EditEventPage() {
         if (data.image_path) {
           setOriginalImagePath(data.image_path);
           setCurrentImage(
-            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/events/${data.image_path}`
+            getImageUrl(data.image_path, 'events') || ''
           );
         }
 

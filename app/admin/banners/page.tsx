@@ -6,6 +6,7 @@ import Link from "next/link";
 import Button from "@/components/ui/button/Button";
 import { PlusIcon, TrashBinIcon } from "@/icons";
 import BackButton from "@/components/common/BackButton";
+import { getImageUrl } from "@/lib/utils/image-utils";
 
 export default function BannersPage() {
   const supabase = createClient();
@@ -172,7 +173,7 @@ export default function BannersPage() {
                   <td className="px-6 py-4">
                     {banner.image_path ? (
                       <img
-                        src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/banners/${banner.image_path}`}
+                        src={getImageUrl(banner.image_path, 'banners') || ''}
                         alt={banner.title || "Banner"}
                         className="h-16 w-32 rounded object-cover"
                         key={`${banner.id}-${banner.updated_at || Date.now()}`}

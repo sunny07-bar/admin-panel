@@ -8,6 +8,7 @@ import Input from "@/components/form/input/InputField";
 import { PlusIcon, TrashBinIcon } from "@/icons";
 import BackButton from "@/components/common/BackButton";
 import { formatFloridaDateDDMMYYYY, formatFloridaTime, toFloridaTime } from "@/lib/utils/timezone";
+import { getImageUrl } from "@/lib/utils/image-utils";
 import { parseISO, format } from "date-fns";
 
 export default function EventsPage() {
@@ -350,7 +351,7 @@ export default function EventsPage() {
                     <td className="px-6 py-4">
                       {event.image_path ? (
               <img
-                src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/events/${event.image_path}`}
+                src={getImageUrl(event.image_path, 'events') || ''}
                 alt={event.title}
                           className="w-20 h-20 object-cover rounded-lg"
               />

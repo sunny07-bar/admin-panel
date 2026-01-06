@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import Input from "@/components/form/input/InputField";
 import Button from "@/components/ui/button/Button";
 import { formatFloridaDateDDMMYYYY, formatFloridaTime } from "@/lib/utils/timezone";
+import { getImageUrl } from "@/lib/utils/image-utils";
 
 export default function EventsPage() {
   const supabase = createClient();
@@ -175,7 +176,7 @@ export default function EventsPage() {
                         <td className="px-6 py-4">
                           {event.image_path ? (
                             <img
-                              src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/events/${event.image_path}`}
+                              src={getImageUrl(event.image_path, 'events') || ''}
                               alt={event.title}
                               className="w-20 h-20 object-cover rounded-lg"
                             />
@@ -225,7 +226,7 @@ export default function EventsPage() {
                 >
                   {event.image_path && (
                     <img
-                      src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/events/${event.image_path}`}
+                      src={getImageUrl(event.image_path, 'events') || ''}
                       alt={event.title}
                       className="w-full h-40 sm:h-48 object-cover rounded-lg"
                     />
