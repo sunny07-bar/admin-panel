@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { compressImageToWebP } from "@/lib/utils/imageCompression";
 import { convert24To12, convert12To24 } from "@/lib/utils/timeFormat";
 import BackButton from "@/components/common/BackButton";
 import Input from "@/components/form/input/InputField";
@@ -19,12 +18,9 @@ export default function SettingsPage() {
     phone: "",
     email: "",
     address: "",
-    logo_path: "",
     instagram_user_id: "",
     facebook_user_id: "",
   });
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -61,22 +57,6 @@ export default function SettingsPage() {
           }
         });
         setSiteSettings(settings);
-        
-        // Load logo preview if exists
-        if (settings.logo_path) {
-          const logoPath = typeof settings.logo_path === 'string' 
-            ? settings.logo_path.replace(/^"|"$/g, '') // Remove quotes if stringified
-            : settings.logo_path
-          
-          if (logoPath) {
-            const { data: logoData } = await supabase.storage
-              .from('site-assets')
-              .createSignedUrl(logoPath, 3600);
-            if (logoData) {
-              setLogoPreview(logoData.signedUrl);
-            }
-          }
-        }
       }
     };
 
@@ -86,50 +66,13 @@ export default function SettingsPage() {
   const handleSaveSettings = async () => {
     setLoading(true);
     try {
-      let logoPath = siteSettings.logo_path;
-      
-      // Handle logo upload using API route (bypasses RLS)
-      if (logoFile) {
-        // Compress and convert to WebP (under 100KB, maintains quality)
-        const compressedFile = await compressImageToWebP(logoFile);
-        
-        // Upload via API route that uses service role key
-        const formData = new FormData();
-        formData.append('file', compressedFile);
-        if (logoPath) {
-          formData.append('oldLogoPath', logoPath);
-        }
-        
-        const uploadResponse = await fetch('/api/settings/upload-logo', {
-          method: 'POST',
-          body: formData,
-        });
-        
-        if (!uploadResponse.ok) {
-          const errorData = await uploadResponse.json();
-          throw new Error(errorData.error || 'Failed to upload logo');
-        }
-        
-        const uploadData = await uploadResponse.json();
-        logoPath = uploadData.path;
-        
-        // Update preview
-        const { data: logoData } = await supabase.storage
-          .from('site-assets')
-          .createSignedUrl(logoPath, 3600);
-        if (logoData) {
-          setLogoPreview(logoData.signedUrl);
-        }
-      }
-      
       // Update site settings via API route (bypasses RLS)
-      const updatedSettings = { ...siteSettings, logo_path: logoPath };
       const updateResponse = await fetch('/api/settings/update', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ settings: updatedSettings }),
+        body: JSON.stringify({ settings: siteSettings }),
       });
       
       if (!updateResponse.ok) {
@@ -137,26 +80,12 @@ export default function SettingsPage() {
         throw new Error(errorData.error || 'Failed to update settings');
       }
       
-      setLogoFile(null);
       alert("Settings saved successfully!");
     } catch (error: any) {
       console.error('Error saving settings:', error);
       alert(error.message || 'Failed to save settings');
     } finally {
       setLoading(false);
-    }
-  };
-  
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setLogoFile(file);
-      // Create preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setLogoPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
     }
   };
 
@@ -275,29 +204,6 @@ export default function SettingsPage() {
                 onChange={(e) => setSiteSettings({ ...siteSettings, facebook_user_id: e.target.value })}
                 placeholder="your_facebook_username"
               />
-            </div>
-            <div>
-              <Label htmlFor="logo">Logo</Label>
-              <div className="space-y-3">
-                {logoPreview && (
-                  <div className="relative w-32 h-32 border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-50">
-                    <img
-                      src={logoPreview}
-                      alt="Logo preview"
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-                )}
-                <Input
-                  id="logo"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleLogoChange}
-                />
-                <p className="text-xs text-gray-500">
-                  Upload your restaurant logo. Recommended size: 200x200px. Will be displayed in the website header.
-                </p>
-              </div>
             </div>
             <Button onClick={handleSaveSettings} disabled={loading}>
               {loading ? "Saving..." : "Save Settings"}

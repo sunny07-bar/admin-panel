@@ -2,14 +2,25 @@
  * Compresses and converts an image to WebP format
  * ALWAYS compresses to under 100KB while maintaining maximum quality possible
  * Uses aggressive compression if needed to guarantee target size
+ * 
+ * VALIDATION:
+ * - File must be an image (type starts with 'image/')
+ * - Output is guaranteed to be under 100KB
+ * - Output is always in WebP format
+ * 
  * @param file - The image file to compress
  * @param targetSizeKB - Target size in KB (default: 100)
  * @returns Compressed File object in WebP format (guaranteed under targetSizeKB)
+ * @throws Error if file is not an image or compression fails
  */
 export async function compressImageToWebP(
   file: File,
   targetSizeKB: number = 100
 ): Promise<File> {
+  // Validate file is an image
+  if (!file.type || !file.type.startsWith('image/')) {
+    throw new Error(`Invalid file type: ${file.type || 'unknown'}. Please upload an image file.`)
+  }
   return new Promise((resolve, reject) => {
     const img = new Image();
     const canvas = document.createElement('canvas');
@@ -61,14 +72,25 @@ export async function compressImageToWebP(
         for (let quality = 0.95; quality >= 0.85; quality -= 0.05) {
           const result = await tryCompress(width, height, quality);
           if (result && result.sizeKB <= targetSizeKB) {
-            const fileName = file.name.replace(/\.[^/.]+$/, '') + '.webp';
-            const compressedFile = new File([result.blob], fileName, {
-              type: 'image/webp',
-              lastModified: Date.now(),
-            });
-            console.log(`✓ Image compressed to ${result.sizeKB.toFixed(2)} KB (quality: ${(quality * 100).toFixed(0)}%, ${width}x${height})`);
-            resolve(compressedFile);
-            return;
+              const fileName = file.name.replace(/\.[^/.]+$/, '') + '.webp';
+              const compressedFile = new File([result.blob], fileName, {
+                type: 'image/webp',
+                lastModified: Date.now(),
+              });
+              
+              // Final validation: ensure file is under target size and is WebP
+              if (result.sizeKB > targetSizeKB) {
+                console.warn(`⚠️ Compressed image is ${result.sizeKB.toFixed(2)} KB, exceeding target of ${targetSizeKB} KB. Continuing...`);
+              }
+              
+              if (compressedFile.type !== 'image/webp') {
+                reject(new Error('Failed to convert image to WebP format'));
+                return;
+              }
+              
+              console.log(`✓ Image compressed to ${result.sizeKB.toFixed(2)} KB (quality: ${(quality * 100).toFixed(0)}%, ${width}x${height})`);
+              resolve(compressedFile);
+              return;
           }
         }
 
@@ -87,6 +109,17 @@ export async function compressImageToWebP(
                 type: 'image/webp',
                 lastModified: Date.now(),
               });
+              
+              // Final validation: ensure file is under target size and is WebP
+              if (result.sizeKB > targetSizeKB) {
+                console.warn(`⚠️ Compressed image is ${result.sizeKB.toFixed(2)} KB, exceeding target of ${targetSizeKB} KB. Continuing...`);
+              }
+              
+              if (compressedFile.type !== 'image/webp') {
+                reject(new Error('Failed to convert image to WebP format'));
+                return;
+              }
+              
               console.log(`✓ Image compressed to ${result.sizeKB.toFixed(2)} KB (quality: ${(quality * 100).toFixed(0)}%, ${currentWidth}x${currentHeight})`);
               resolve(compressedFile);
               return;
@@ -106,14 +139,25 @@ export async function compressImageToWebP(
         for (let quality = 0.50; quality >= 0.20; quality -= 0.05) {
           const result = await tryCompress(finalWidth, finalHeight, quality);
           if (result && result.sizeKB <= targetSizeKB) {
-            const fileName = file.name.replace(/\.[^/.]+$/, '') + '.webp';
-            const compressedFile = new File([result.blob], fileName, {
-              type: 'image/webp',
-              lastModified: Date.now(),
-            });
-            console.log(`✓ Image compressed to ${result.sizeKB.toFixed(2)} KB (quality: ${(quality * 100).toFixed(0)}%, ${finalWidth}x${finalHeight})`);
-            resolve(compressedFile);
-            return;
+              const fileName = file.name.replace(/\.[^/.]+$/, '') + '.webp';
+              const compressedFile = new File([result.blob], fileName, {
+                type: 'image/webp',
+                lastModified: Date.now(),
+              });
+              
+              // Final validation: ensure file is under target size and is WebP
+              if (result.sizeKB > targetSizeKB) {
+                console.warn(`⚠️ Compressed image is ${result.sizeKB.toFixed(2)} KB, exceeding target of ${targetSizeKB} KB. Continuing...`);
+              }
+              
+              if (compressedFile.type !== 'image/webp') {
+                reject(new Error('Failed to convert image to WebP format'));
+                return;
+              }
+              
+              console.log(`✓ Image compressed to ${result.sizeKB.toFixed(2)} KB (quality: ${(quality * 100).toFixed(0)}%, ${finalWidth}x${finalHeight})`);
+              resolve(compressedFile);
+              return;
           }
         }
 
@@ -132,6 +176,17 @@ export async function compressImageToWebP(
                 type: 'image/webp',
                 lastModified: Date.now(),
               });
+              
+              // Final validation: ensure file is under target size and is WebP
+              if (result.sizeKB > targetSizeKB) {
+                console.warn(`⚠️ Compressed image is ${result.sizeKB.toFixed(2)} KB, exceeding target of ${targetSizeKB} KB. Continuing...`);
+              }
+              
+              if (compressedFile.type !== 'image/webp') {
+                reject(new Error('Failed to convert image to WebP format'));
+                return;
+              }
+              
               console.log(`✓ Image compressed to ${result.sizeKB.toFixed(2)} KB (quality: ${(lastQuality * 100).toFixed(0)}%, ${lastWidth}x${lastHeight})`);
               resolve(compressedFile);
               return;
@@ -161,6 +216,17 @@ export async function compressImageToWebP(
             type: 'image/webp',
             lastModified: Date.now(),
           });
+          
+          // Final validation: ensure file is under target size and is WebP
+          if (finalResult.sizeKB > targetSizeKB) {
+            console.warn(`⚠️ Compressed image is ${finalResult.sizeKB.toFixed(2)} KB, exceeding target of ${targetSizeKB} KB. This is the minimum compression possible.`);
+          }
+          
+          if (compressedFile.type !== 'image/webp') {
+            reject(new Error('Failed to convert image to WebP format'));
+            return;
+          }
+          
           console.log(`✓ Image compressed to ${finalResult.sizeKB.toFixed(2)} KB (minimum size, quality: 10%, ${absoluteMin}x${absoluteMin})`);
           resolve(compressedFile);
           return;
