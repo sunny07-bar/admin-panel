@@ -20,6 +20,7 @@ export default function SettingsPage() {
     address: "",
     instagram_user_id: "",
     facebook_user_id: "",
+    tiktok_user_id: "",
   });
 
   useEffect(() => {
@@ -74,12 +75,12 @@ export default function SettingsPage() {
         },
         body: JSON.stringify({ settings: siteSettings }),
       });
-      
+
       if (!updateResponse.ok) {
         const errorData = await updateResponse.json();
         throw new Error(errorData.error || 'Failed to update settings');
       }
-      
+
       alert("Settings saved successfully!");
     } catch (error: any) {
       console.error('Error saving settings:', error);
@@ -97,14 +98,14 @@ export default function SettingsPage() {
         // Ensure open_time and close_time are strings in HH:mm format
         const dataToSave = {
           ...hour,
-          open_time: hour.open_time && typeof hour.open_time === 'string' 
-            ? hour.open_time.trim() 
+          open_time: hour.open_time && typeof hour.open_time === 'string'
+            ? hour.open_time.trim()
             : hour.open_time,
-          close_time: hour.close_time && typeof hour.close_time === 'string' 
-            ? hour.close_time.trim() 
+          close_time: hour.close_time && typeof hour.close_time === 'string'
+            ? hour.close_time.trim()
             : hour.close_time,
         };
-        
+
         console.log('Saving opening hour:', {
           weekday: dataToSave.weekday,
           open_time: dataToSave.open_time,
@@ -112,14 +113,14 @@ export default function SettingsPage() {
           open_time_type: typeof dataToSave.open_time,
           close_time_type: typeof dataToSave.close_time,
         });
-        
+
         const { data, error } = await supabase.from("opening_hours").upsert(dataToSave).select();
-        
+
         if (error) {
           console.error('Error saving hour:', error);
           throw error;
         }
-        
+
         console.log('Saved successfully:', data);
       }
       alert("Opening hours saved successfully!");
@@ -203,6 +204,16 @@ export default function SettingsPage() {
                 value={siteSettings.facebook_user_id || ""}
                 onChange={(e) => setSiteSettings({ ...siteSettings, facebook_user_id: e.target.value })}
                 placeholder="your_facebook_username"
+              />
+            </div>
+            <div>
+              <Label htmlFor="tiktok_user_id">TikTok User ID</Label>
+              <Input
+                id="tiktok_user_id"
+                type="text"
+                value={siteSettings.tiktok_user_id || ""}
+                onChange={(e) => setSiteSettings({ ...siteSettings, tiktok_user_id: e.target.value })}
+                placeholder="your_tiktok_username"
               />
             </div>
             <Button onClick={handleSaveSettings} disabled={loading}>

@@ -3,16 +3,16 @@
 import React, { useState, useEffect, useRef } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
-import timeGridPlugin from "@fullcalendar/timegrid";
+import timeGridPlugin from "@fullcalendar/timegrid"; // Keeping just in case, but unused for main flow
 import interactionPlugin from "@fullcalendar/interaction";
-import listPlugin from "@fullcalendar/list";
 import {
   EventContentArg,
   DatesSetArg,
   EventClickArg,
 } from "@fullcalendar/core";
 import { createClient } from "@/lib/supabase/client";
-import { format } from "date-fns";
+import { format, isSameDay } from "date-fns";
+import ReservationList from "./ReservationList";
 
 interface ReservationCalendarProps {
   initialDate?: Date;
@@ -86,6 +86,7 @@ export default function ReservationCalendar({ initialDate }: ReservationCalendar
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [allReservations, setAllReservations] = useState<any[]>([]);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [currentViewType, setCurrentViewType] = useState<string>("dayGridMonth");
 
   const fetchReservations = async (start: Date, end: Date) => {
@@ -151,7 +152,7 @@ export default function ReservationCalendar({ initialDate }: ReservationCalendar
       setEvents(summaryEvents);
 
     } else {
-      // Logic for List / Detail views
+      // Logic for TimeGrid / Detail views
       const detailEvents: CalendarEvent[] = allReservations.map((res) => {
         const startDateStr = `${res.reservation_date}T${res.reservation_time}`;
         const startDate = new Date(startDateStr);
@@ -198,13 +199,14 @@ export default function ReservationCalendar({ initialDate }: ReservationCalendar
   const handleEventClick = (info: EventClickArg) => {
     if (info.event.extendedProps.isSummary) {
       const dateStr = info.event.extendedProps.date;
-      if (calendarRef.current && dateStr) {
-        const calendarApi = calendarRef.current.getApi();
-        calendarApi.changeView("listDay", dateStr); // Change to listDay
+      if (dateStr) {
+        // Parse date string (YYYY-MM-DD) to Date object in local time
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        setSelectedDate(date);
       }
     } else {
-      console.log("Clicked individual reservation:", info.event);
-      // Future: trigger edit modal
+      // Handle individual event click if needed
     }
   };
 
@@ -223,8 +225,6 @@ export default function ReservationCalendar({ initialDate }: ReservationCalendar
       )
     }
 
-    // List View Row Content (or TimeGrid Content)
-    const isListView = eventInfo.view.type.startsWith('list');
     const isTimeGrid = eventInfo.view.type.startsWith('timeGrid');
 
     const statusInfo = getStatusIndicator(props.status);
@@ -249,116 +249,120 @@ export default function ReservationCalendar({ initialDate }: ReservationCalendar
       );
     }
 
-    if (isListView) {
-      return (
-        <div className="flex items-center justify-between w-full py-2 px-1 gap-4">
-          {/* Custom Row Layout */}
-          <div className="flex items-center gap-4 flex-1 min-w-0">
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-gray-900 dark:text-white text-base truncate">
-                  {props.customerName}
-                </span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider text-white`}
-                  style={{ backgroundColor: colors.bg }}>
-                  {props.area}
-                </span>
-              </div>
-              <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400 mt-1">
-                <span className="font-mono">{props.formattedTime}</span> {/* Explicit start time */}
-                <span>•</span>
-                <span className="flex items-center gap-1">
-                  👥 <b>{props.guests} Guests</b>
-                </span>
-                {props.phone && (
-                  <>
-                    <span>•</span>
-                    <span>{props.phone}</span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Side: Status */}
-          <div className="shrink-0 flex items-center gap-2" title={statusInfo.label}>
-            <span className="text-xl">{statusInfo.emoji}</span>
-          </div>
-        </div>
-      );
-    }
-
     return null;
   };
 
+  useEffect(() => {
+    if (selectedDate && calendarRef.current) {
+      const api = calendarRef.current.getApi();
+      api.gotoDate(selectedDate);
+    }
+  }, [selectedDate]);
+
   return (
     <div className="space-y-4">
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-6 p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
-        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Areas:</span>
-        {Object.entries(AREA_COLORS).map(([area, colors]) => {
-          if (area === 'default') return null;
-          return (
-            <div key={area} className="flex items-center gap-2">
-              <span
-                className="w-4 h-4 rounded-md shadow-sm"
-                style={{ backgroundColor: colors.bg }}
-              />
-              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{colors.label}</span>
+      {/* Day View (Detailed Drill-Down) */}
+      {selectedDate && (
+        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-center justify-between bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setSelectedDate(null)}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-lg transition-colors"
+              >
+                ← Back to Month
+              </button>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                {format(selectedDate, 'MMMM d, yyyy')}
+              </h2>
             </div>
-          )
-        })}
-      </div>
 
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900 shadow-sm calendar-wrapper">
-        <style jsx global>{`
-          .fc-theme-standard .fc-scrollgrid { border: none; }
-          .fc-theme-standard td, .fc-theme-standard th { border-color: #f3f4f6; }
-          .dark .fc-theme-standard td, .dark .fc-theme-standard th { border-color: #374151; }
-           
-          /* List View Customization */
-          .fc-list { border: none !important; }
-          .fc-list-day-cushion { background-color: #f9fafb !important; }
-          .dark .fc-list-day-cushion { background-color: #1f2937 !important; }
-          .fc-list-event:hover td { background-color: #f3f4f6 !important; }
-          .dark .fc-list-event:hover td { background-color: #374151 !important; }
-          .fc-list-event-time { display: none !important; }
-          .fc-list-event-graphic { display: none !important; }
-          
-          /* Remove end time from TimeGrid event text if standard rendering used */
-          .fc-event-time { font-weight: bold; }
-        `}</style>
-        <FullCalendar
-          ref={calendarRef}
-          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin]}
-          initialView="dayGridMonth"
-          headerToolbar={{
-            left: "prev,next today",
-            center: "title",
-            right: "dayGridMonth", // Removed listDay button
-          }}
-          buttonText={{
-            today: "Today",
-            month: "Month",
-            day: "Daily Schedule",
-            list: "List"
-          }}
-          views={{
-            listDay: { buttonText: 'Daily Schedule' }
-          }}
-          slotMinTime="10:00:00"
-          slotMaxTime="24:00:00"
-          events={events}
-          datesSet={handleDatesSet}
-          eventContent={renderEventContent}
-          eventClick={handleEventClick}
-          height="auto"
-          stickyHeaderDates={true}
-          dayMaxEvents={true}
-          displayEventEnd={false}
-          navLinks={true} // Enable clicking day names/numbers
-          navLinkDayClick="listDay" // Clicking day goes to Day List view
-        />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSelectedDate(prev => prev ? new Date(prev.setDate(prev.getDate() - 1)) : null)}
+                className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                title="Previous Day"
+              >
+                ← Previous
+              </button>
+              <button
+                onClick={() => setSelectedDate(prev => prev ? new Date(prev.setDate(prev.getDate() + 1)) : null)}
+                className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                title="Next Day"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+
+          <ReservationList
+            selectedDate={selectedDate}
+            reservations={allReservations.filter(res => isSameDay(new Date(res.reservation_date), selectedDate))}
+            onRefresh={() => {
+              if (calendarRef.current) {
+                const api = calendarRef.current.getApi();
+                fetchReservations(api.view.currentStart, api.view.currentEnd);
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {/* Month View (Calendar) - Hidden when date selected, but kept mounted for API access */}
+      <div className={selectedDate ? "hidden" : "block space-y-4"}>
+        {/* Legend */}
+        <div className="flex flex-wrap items-center gap-6 p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Areas:</span>
+          {Object.entries(AREA_COLORS).map(([area, colors]) => {
+            if (area === 'default') return null;
+            return (
+              <div key={area} className="flex items-center gap-2">
+                <span
+                  className="w-4 h-4 rounded-md shadow-sm"
+                  style={{ backgroundColor: colors.bg }}
+                />
+                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{colors.label}</span>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900 shadow-sm calendar-wrapper">
+          <style jsx global>{`
+            .fc-theme-standard .fc-scrollgrid { border: none; }
+            .fc-theme-standard td, .fc-theme-standard th { border-color: #f3f4f6; }
+            .dark .fc-theme-standard td, .dark .fc-theme-standard th { border-color: #374151; }
+            .fc-list { border: none !important; }
+            /* Remove end time from TimeGrid event text if standard rendering used */
+            .fc-event-time { font-weight: bold; }
+          `}</style>
+          <FullCalendar
+            ref={calendarRef}
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+            initialView="dayGridMonth"
+            headerToolbar={{
+              left: "prev,next today",
+              center: "title",
+              right: "dayGridMonth",
+            }}
+            buttonText={{
+              today: "Today",
+              month: "Month",
+            }}
+            selectable={true}
+            dateClick={(arg) => setSelectedDate(arg.date)}
+            navLinks={true}
+            navLinkDayClick={(date) => setSelectedDate(date)}
+            events={events}
+            datesSet={handleDatesSet}
+            eventContent={renderEventContent}
+            eventClick={handleEventClick}
+            height="auto"
+            stickyHeaderDates={true}
+            dayMaxEvents={true}
+            displayEventEnd={false}
+          />
+        </div>
       </div>
     </div>
   );
