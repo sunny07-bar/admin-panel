@@ -24,6 +24,8 @@ export default function NewHomeFeaturePage() {
   const [linkType, setLinkType] = useState<'none' | 'route' | 'custom'>('none');
   const [customLink, setCustomLink] = useState('');
 
+  const [menuType, setMenuType] = useState<'default' | 'food' | 'drink'>('default');
+
   const routes = [
     { value: '/', label: 'Home' },
     { value: '/menu', label: 'Menu' },
@@ -61,6 +63,10 @@ export default function NewHomeFeaturePage() {
       let finalLink = '';
       if (linkType === 'route') {
         finalLink = formData.link;
+        // Append query param if menu route and type is selected
+        if (finalLink === '/menu' && menuType !== 'default') {
+          finalLink = `${finalLink}?type=${menuType}`;
+        }
       } else if (linkType === 'custom') {
         finalLink = customLink;
       }
@@ -141,20 +147,64 @@ export default function NewHomeFeaturePage() {
                 </label>
 
                 {linkType === 'route' && (
-                  <div className="ml-6 grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {routes.map((route) => (
-                      <label key={route.value} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="selectedRoute"
-                          value={route.value}
-                          checked={formData.link === route.value}
-                          onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-                          className="w-4 h-4 text-brand-500"
-                        />
-                        <span className="text-theme-sm text-gray-700 dark:text-gray-300">{route.label}</span>
-                      </label>
-                    ))}
+                  <div className="ml-6 space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {routes.map((route) => (
+                        <label key={route.value} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="selectedRoute"
+                            value={route.value}
+                            checked={formData.link === route.value}
+                            onChange={(e) => {
+                              setFormData({ ...formData, link: e.target.value });
+                              // Reset menu type if switching away from menu (though logic handles construction on submit)
+                            }}
+                            className="w-4 h-4 text-brand-500"
+                          />
+                          <span className="text-theme-sm text-gray-700 dark:text-gray-300">{route.label}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    {/* Sub-options for Menu route */}
+                    {formData.link === '/menu' && (
+                      <div className="bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 block">Menu Tab Target</span>
+                        <div className="flex gap-4">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="menuType"
+                              checked={menuType === 'default'}
+                              onChange={() => setMenuType('default')}
+                              className="w-3 h-3 text-brand-500"
+                            />
+                            <span className="text-sm text-gray-600 dark:text-gray-400">Default</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="menuType"
+                              checked={menuType === 'food'}
+                              onChange={() => setMenuType('food')}
+                              className="w-3 h-3 text-brand-500"
+                            />
+                            <span className="text-sm text-gray-600 dark:text-gray-400">Food</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="menuType"
+                              checked={menuType === 'drink'}
+                              onChange={() => setMenuType('drink')}
+                              className="w-3 h-3 text-brand-500"
+                            />
+                            <span className="text-sm text-gray-600 dark:text-gray-400">Drinks</span>
+                          </label>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

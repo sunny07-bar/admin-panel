@@ -32,6 +32,12 @@ export default function EditEventPage() {
     reservation_price: "",
     action_button_type: "reservation", // "reservation" | "external_tickets" | "custom_tickets"
   });
+  const [areaLimits, setAreaLimits] = useState({
+    Restaurant: "",
+    "Stage Bar": "",
+    "Middle Bar": "",
+  });
+
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [originalImagePath, setOriginalImagePath] = useState<string | null>(null);
@@ -61,7 +67,7 @@ export default function EditEventPage() {
         // Convert UTC dates from database to Florida datetime-local format
         const eventStartLocal = data.event_start ? utcToFloridaDateTimeLocal(data.event_start) : ""
         const eventEndLocal = data.event_end ? utcToFloridaDateTimeLocal(data.event_end) : ""
-        
+
         console.log('EditEventPage - Loaded from DB:', {
           'Event ID': data.id,
           'Event Title': data.title,
@@ -72,7 +78,7 @@ export default function EditEventPage() {
           'Stored end in DB (UTC)': data.event_end,
           'Converted end to Florida (for input)': eventEndLocal,
         })
-        
+
         // Also log what formatFloridaDateDDMMYYYY would show
         if (data.event_start) {
           const { formatFloridaDateDDMMYYYY } = require('@/lib/utils/timezone');
@@ -87,7 +93,7 @@ export default function EditEventPage() {
             })() : 'N/A')
           });
         }
-        
+
         setFormData({
           title: data.title || "",
           slug: data.slug || "",
@@ -119,6 +125,28 @@ export default function EditEventPage() {
           setTicketTypes(tickets);
         }
       }
+      // Fetch reservation seat limits (ONLY if reservation event)
+      const { data: limits, error: limitsError } = await supabase
+        .from("event_reservation_limits")
+        .select("*")
+        .eq("event_id", params.id);
+
+      if (!limitsError && limits) {
+        const mapped = {
+          Restaurant: "",
+          "Stage Bar": "",
+          "Middle Bar": "",
+        };
+
+        limits.forEach((l) => {
+          if (l.area in mapped) {
+            mapped[l.area as keyof typeof mapped] = String(l.max_seats);
+          }
+        });
+
+        setAreaLimits(mapped);
+      }
+
       setFetching(false);
     };
 
@@ -127,15 +155,27 @@ export default function EditEventPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validation: Either ticket_link OR base_ticket_price OR ticket types must be set
     // If ticket_link is provided, it overrides internal ticket system
     const hasTicketLink = formData.ticket_link && formData.ticket_link.trim() !== ""
     const hasBasePrice = formData.base_ticket_price !== "" && formData.base_ticket_price !== null && !isNaN(parseFloat(formData.base_ticket_price))
-    
-    if (!hasTicketLink && !hasBasePrice && ticketTypes.length === 0) {
-      alert("Please set either an External Ticket Link, a Base Ticket Price (can be 0 for free events), or add at least one Ticket Type. Events need tickets to be purchasable.");
-      return;
+
+    const isReservation = formData.action_button_type === "reservation";
+
+    if (!isReservation) {
+      const hasTicketLink =
+        formData.ticket_link && formData.ticket_link.trim() !== "";
+      const hasBasePrice =
+        formData.base_ticket_price !== "" &&
+        !isNaN(parseFloat(formData.base_ticket_price));
+
+      if (!hasTicketLink && !hasBasePrice && ticketTypes.length === 0) {
+        alert(
+          "Please set either an External Ticket Link, a Base Ticket Price, or add at least one Ticket Type."
+        );
+        return;
+      }
     }
 
     setLoading(true);
@@ -154,7 +194,7 @@ export default function EditEventPage() {
             cleanPath = originalImagePath.split('/storage/v1/object/public/events/')[1];
           }
           cleanPath = cleanPath.split('?')[0];
-          
+
           console.log("Deleting old event image:", cleanPath, "from bucket: events");
           await supabase.storage.from("events").remove([cleanPath]);
         }
@@ -200,6 +240,34 @@ export default function EditEventPage() {
         .eq("id", params.id);
 
       if (error) throw error;
+
+      // Save reservation seat limits (ONLY for reservation events)
+      if (formData.action_button_type === "reservation") {
+        // Remove old limits for this event (avoid referencing undefined local 'data')
+        const { error: deleteError } = await supabase
+          .from("event_reservation_limits")
+          .delete()
+          .eq("event_id", params.id);
+
+        if (deleteError) {
+          throw deleteError;
+        }
+
+        const rows = Object.entries(areaLimits)
+          .filter(([_, v]) => v && Number(v) > 0)
+          .map(([area, max_seats]) => ({
+            event_id: params.id,
+            area,
+            max_seats: Number(max_seats),
+          }));
+
+        if (rows.length > 0) {
+          await supabase
+            .from("event_reservation_limits")
+            .insert(rows);
+        }
+      }
+
 
       // Force refresh by navigating with cache bypass
       router.refresh();
@@ -333,10 +401,10 @@ export default function EditEventPage() {
             <div>
               <Label htmlFor="image">Image</Label>
               {currentImage && (
-                <img 
-                  src={currentImage.split('?')[0]} 
-                  alt="Current" 
-                  className="mb-2 h-32 w-64 rounded object-cover" 
+                <img
+                  src={currentImage.split('?')[0]}
+                  alt="Current"
+                  className="mb-2 h-32 w-64 rounded object-cover"
                   key={Date.now()}
                 />
               )}
@@ -378,16 +446,15 @@ export default function EditEventPage() {
           <p className="text-sm text-gray-600 mb-4 dark:text-gray-400">
             Select which action button to display for this event. The form below will update based on your selection.
           </p>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <button
               type="button"
               onClick={() => setFormData({ ...formData, action_button_type: 'reservation' })}
-              className={`p-4 rounded-lg border-2 transition-all ${
-                formData.action_button_type === 'reservation'
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300'
-                  : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
-              }`}
+              className={`p-4 rounded-lg border-2 transition-all ${formData.action_button_type === 'reservation'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-300'
+                : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                }`}
             >
               <div className="font-semibold mb-1 flex items-center gap-2">
                 Make a Reservation
@@ -403,11 +470,10 @@ export default function EditEventPage() {
             <button
               type="button"
               onClick={() => setFormData({ ...formData, action_button_type: 'external_tickets' })}
-              className={`p-4 rounded-lg border-2 transition-all ${
-                formData.action_button_type === 'external_tickets'
-                  ? 'border-green-500 bg-green-50 dark:bg-green-900/20 ring-2 ring-green-300'
-                  : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
-              }`}
+              className={`p-4 rounded-lg border-2 transition-all ${formData.action_button_type === 'external_tickets'
+                ? 'border-green-500 bg-green-50 dark:bg-green-900/20 ring-2 ring-green-300'
+                : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                }`}
             >
               <div className="font-semibold mb-1 flex items-center gap-2">
                 Get Tickets (External)
@@ -423,11 +489,10 @@ export default function EditEventPage() {
             <button
               type="button"
               onClick={() => setFormData({ ...formData, action_button_type: 'custom_tickets' })}
-              className={`p-4 rounded-lg border-2 transition-all ${
-                formData.action_button_type === 'custom_tickets'
-                  ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 ring-2 ring-purple-300'
-                  : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
-              }`}
+              className={`p-4 rounded-lg border-2 transition-all ${formData.action_button_type === 'custom_tickets'
+                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 ring-2 ring-purple-300'
+                : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                }`}
             >
               <div className="font-semibold mb-1 flex items-center gap-2">
                 Get Ticket (Custom)
@@ -443,7 +508,7 @@ export default function EditEventPage() {
         </div>
 
         {/* Dynamic Form Section - Only show selected type */}
-        
+
         {/* Reservation Configuration - Only show when reservation is selected */}
         {formData.action_button_type === 'reservation' && (
           <div className="rounded-2xl border-2 border-blue-500 bg-blue-50/30 dark:bg-blue-900/10 p-6 transition-all">
@@ -451,7 +516,7 @@ export default function EditEventPage() {
               <h2 className="text-xl font-semibold">Reservation Configuration</h2>
               <span className="text-xs bg-blue-500 text-white px-3 py-1 rounded-full font-semibold">Currently Active</span>
             </div>
-            
+
             <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
               <h3 className="font-semibold mb-3">Reservation Price Per Person (Optional)</h3>
               <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
@@ -468,6 +533,37 @@ export default function EditEventPage() {
                   onChange={(e) => setFormData({ ...formData, reservation_price: e.target.value })}
                   placeholder="0.00"
                 />
+                {/* Reservation Seat Limits */}
+                <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <h3 className="font-semibold mb-3">
+                    Reservation Seat Limits (Per Area)
+                  </h3>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
+                    Set maximum seats per area for this reservation-based event.
+                    Leave empty for unlimited.
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {Object.entries(areaLimits).map(([area, value]) => (
+                      <div key={area}>
+                        <Label>{area}</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={value}
+                          onChange={(e) =>
+                            setAreaLimits({
+                              ...areaLimits,
+                              [area]: e.target.value,
+                            })
+                          }
+                          placeholder="Unlimited"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <p className="text-xs text-gray-500 mt-1">
                   Leave empty for free reservations. This price is per person - the total will be calculated by multiplying by the number of guests.
                 </p>
@@ -483,7 +579,7 @@ export default function EditEventPage() {
               <h2 className="text-xl font-semibold">External Tickets Configuration</h2>
               <span className="text-xs bg-green-500 text-white px-3 py-1 rounded-full font-semibold">Currently Active</span>
             </div>
-            
+
             <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
               <h3 className="font-semibold mb-3">External Ticket Link</h3>
               <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">

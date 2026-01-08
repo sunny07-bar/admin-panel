@@ -42,6 +42,11 @@ export default function NewEventPage() {
     currency: "USD",
     quantity_total: "",
   });
+  const [areaLimits, setAreaLimits] = useState({
+    Restaurant: "",
+    "Stage Bar": "",
+    "Middle Bar": "",
+  });
 
   const generateSlug = (title: string) => {
     return title
@@ -74,14 +79,22 @@ export default function NewEventPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validation: Either ticket_link OR base_ticket_price OR ticket types must be set
-    // If ticket_link is provided, it overrides internal ticket system
-    const hasTicketLink = formData.ticket_link && formData.ticket_link.trim() !== ""
-    const hasBasePrice = formData.base_ticket_price !== "" && formData.base_ticket_price !== null && !isNaN(parseFloat(formData.base_ticket_price))
-    
-    if (!hasTicketLink && !hasBasePrice && ticketTypes.length === 0) {
-      alert("Please set either an External Ticket Link, a Base Ticket Price (can be 0 for free events), or add at least one Ticket Type. Events need tickets to be purchasable.");
-      return;
+    // Validation: Skip for reservation events, enforce for ticket events
+    const isReservation = formData.action_button_type === "reservation";
+
+    if (!isReservation) {
+      const hasTicketLink =
+        formData.ticket_link && formData.ticket_link.trim() !== "";
+      const hasBasePrice =
+        formData.base_ticket_price !== "" &&
+        !isNaN(parseFloat(formData.base_ticket_price));
+
+      if (!hasTicketLink && !hasBasePrice && ticketTypes.length === 0) {
+        alert(
+          "Please set either an External Ticket Link, a Base Ticket Price, or add at least one Ticket Type."
+        );
+        return;
+      }
     }
 
     setLoading(true);
@@ -133,6 +146,26 @@ export default function NewEventPage() {
         .single();
 
       if (eventError) throw eventError;
+
+      // Save reservation seat limits (ONLY for reservation events)
+      if (
+        newEvent &&
+        formData.action_button_type === "reservation"
+      ) {
+        const rows = Object.entries(areaLimits)
+          .filter(([_, v]) => v && Number(v) > 0)
+          .map(([area, max_seats]) => ({
+            event_id: newEvent.id,
+            area,
+            max_seats: Number(max_seats),
+          }));
+
+        if (rows.length > 0) {
+          await supabase
+            .from("event_reservation_limits")
+            .insert(rows);
+        }
+      }
 
       // Create ticket types if any
       if (ticketTypes.length > 0 && newEvent) {
@@ -357,6 +390,36 @@ export default function NewEventPage() {
                 </p>
               </div>
             </div>
+
+            <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <h3 className="font-semibold mb-3">
+                Reservation Seat Limits (Per Area)
+              </h3>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
+                Set maximum seats per area for this reservation-based event.
+                Leave empty for unlimited.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {Object.entries(areaLimits).map(([area, value]) => (
+                  <div key={area}>
+                    <Label>{area}</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={value}
+                      onChange={(e) =>
+                        setAreaLimits({
+                          ...areaLimits,
+                          [area]: e.target.value,
+                        })
+                      }
+                      placeholder="Unlimited"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -546,4 +609,3 @@ export default function NewEventPage() {
     </div>
   );
 }
-
