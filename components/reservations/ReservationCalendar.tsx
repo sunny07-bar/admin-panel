@@ -297,7 +297,7 @@ export default function ReservationCalendar({ initialDate }: ReservationCalendar
 
           <ReservationList
             selectedDate={selectedDate}
-            reservations={allReservations.filter(res => isSameDay(new Date(res.reservation_date), selectedDate))}
+            reservations={allReservations.filter(res => res.reservation_date === format(selectedDate, 'yyyy-MM-dd'))}
             onRefresh={() => {
               if (calendarRef.current) {
                 const api = calendarRef.current.getApi();
