@@ -2,24 +2,27 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 import Input from "@/components/form/input/InputField";
 import Button from "@/components/ui/button/Button";
 import { formatFloridaDateDDMMYYYY, formatFloridaTime } from "@/lib/utils/timezone";
 import { getImageUrl } from "@/lib/utils/image-utils";
 
 export default function EventsPage() {
+  const router = useRouter();
   const supabase = createClient();
   const [events, setEvents] = useState<any[]>([]);
   const [allEvents, setAllEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortDirection, setSortDirection] = useState<"desc" | "asc">("desc"); // "desc" = Upcoming/Newest first, older in last
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
     const { data: eventsData } = await supabase
       .from("events")
       .select("*")
-      .order("event_start", { ascending: true });
+      .order("event_start", { ascending: false }); // Upcoming / newest first, older in last
     
     if (!eventsData) {
       setAllEvents([]);
@@ -64,27 +67,39 @@ export default function EventsPage() {
       })
     );
 
-    setAllEvents(eventsWithStats);
-    setEvents(eventsWithStats);
+    // Initial sort: upcoming / newest first (timeB - timeA)
+    const sorted = [...eventsWithStats].sort((a, b) => {
+      const timeA = new Date(a.event_start || 0).getTime();
+      const timeB = new Date(b.event_start || 0).getTime();
+      return timeB - timeA;
+    });
+
+    setAllEvents(sorted);
+    setEvents(sorted);
     setLoading(false);
   }, [supabase]);
 
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setEvents(allEvents);
-      return;
+    let result = [...allEvents];
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter((event) => {
+        const title = event.title?.toLowerCase() || "";
+        const location = event.location?.toLowerCase() || "";
+        const slug = event.slug?.toLowerCase() || "";
+        return title.includes(query) || location.includes(query) || slug.includes(query);
+      });
     }
 
-    const query = searchQuery.toLowerCase().trim();
-    const filtered = allEvents.filter((event) => {
-      const title = event.title?.toLowerCase() || "";
-      const location = event.location?.toLowerCase() || "";
-      const slug = event.slug?.toLowerCase() || "";
-      return title.includes(query) || location.includes(query) || slug.includes(query);
+    result.sort((a, b) => {
+      const timeA = new Date(a.event_start || 0).getTime();
+      const timeB = new Date(b.event_start || 0).getTime();
+      return sortDirection === "desc" ? timeB - timeA : timeA - timeB;
     });
 
-    setEvents(filtered);
-  }, [searchQuery, allEvents]);
+    setEvents(result);
+  }, [searchQuery, allEvents, sortDirection]);
 
   useEffect(() => {
     fetchEvents();
@@ -105,29 +120,56 @@ export default function EventsPage() {
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Events</h1>
       </div>
 
-      {/* Search Bar */}
-      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center">
-        <div className="flex-1 max-w-full sm:max-w-md">
+      {/* Search & Sort Controls */}
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <div className="flex gap-2 items-center flex-1 max-w-md">
           <Input
             type="text"
             placeholder="Search events by name..."
             value={searchQuery}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
             className="w-full"
           />
+          {searchQuery && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSearchQuery("")}
+            >
+              Clear
+            </Button>
+          )}
         </div>
-        {searchQuery && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSearchQuery("")}
+
+        {/* Sort Pill Buttons */}
+        <div className="flex items-center gap-1.5 self-start sm:self-auto">
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium mr-1">Sort:</span>
+          <button
+            type="button"
+            onClick={() => setSortDirection("desc")}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+              sortDirection === "desc"
+                ? "bg-[#F59E0B] text-black border-[#F59E0B] shadow-sm font-bold"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700 hover:border-gray-400"
+            }`}
           >
-            Clear
-          </Button>
-        )}
+            Upcoming First
+          </button>
+          <button
+            type="button"
+            onClick={() => setSortDirection("asc")}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+              sortDirection === "asc"
+                ? "bg-[#F59E0B] text-black border-[#F59E0B] shadow-sm font-bold"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700 hover:border-gray-400"
+            }`}
+          >
+            Oldest First
+          </button>
+        </div>
       </div>
 
-      {/* Events List - Mobile-friendly cards */}
+      {/* Events List */}
       <div className="space-y-4">
         {events.length === 0 ? (
           <div className="text-center py-12 text-gray-500 dark:text-gray-400">
@@ -141,28 +183,37 @@ export default function EventsPage() {
                 <table className="w-full">
                   <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                         Image
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                         Title
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                        Date
+                      <th
+                        onClick={() => setSortDirection((prev) => (prev === "desc" ? "asc" : "desc"))}
+                        className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-[#F59E0B] transition-colors select-none whitespace-nowrap"
+                        title="Click to toggle sorting"
+                      >
+                        <div className="inline-flex items-center gap-1">
+                          <span>Date</span>
+                          <span className="text-[#F59E0B] font-bold text-xs">
+                            {sortDirection === "desc" ? "↓" : "↑"}
+                          </span>
+                        </div>
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                         Time
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                         Location
                       </th>
-                      <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                         Tickets Sold
                       </th>
-                      <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                         Total Orders
                       </th>
-                      <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                         Revenue
                       </th>
                     </tr>
@@ -171,43 +222,47 @@ export default function EventsPage() {
                     {events.map((event) => (
                       <tr
                         key={event.id}
-                        className="hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors"
+                        onClick={() => router.push(`/manager/events/${event.id}`)}
+                        className="hover:bg-gray-100/70 dark:hover:bg-white/[0.04] transition-colors cursor-pointer group"
                       >
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3 whitespace-nowrap">
                           {event.image_path ? (
                             <img
                               src={getImageUrl(event.image_path, 'events') || ''}
                               alt={event.title}
-                              className="w-20 h-20 object-cover rounded-lg"
+                              className="w-12 h-14 object-cover rounded-lg border border-gray-200 dark:border-gray-800"
                             />
                           ) : (
-                            <div className="w-20 h-20 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center">
-                              <span className="text-xs text-gray-400">No image</span>
+                            <div className="w-12 h-14 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center text-[10px] text-gray-400">
+                              No img
                             </div>
                           )}
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="font-semibold text-gray-900 dark:text-white">
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-gray-900 dark:text-white text-sm max-w-[240px] truncate group-hover:text-brand-500 transition-colors" title={event.title}>
                             {event.title}
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
-                          {formatFloridaDateDDMMYYYY(event.event_start)}
+                        <td className="px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 font-mono whitespace-nowrap">
+                          {(() => {
+                            const formatted = formatFloridaDateDDMMYYYY(event.event_start);
+                            return formatted ? formatted.replace(/-/g, "/") : "-";
+                          })()}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                        <td className="px-4 py-2.5 text-xs sm:text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
                           {formatFloridaTime(event.event_start, 'h:mm a')}
                           {event.event_end && ` - ${formatFloridaTime(event.event_end, 'h:mm a')}`}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                        <td className="px-4 py-2.5 text-xs sm:text-sm text-gray-600 dark:text-gray-400 max-w-[160px] truncate" title={event.location || ''}>
                           {event.location || "-"}
                         </td>
-                        <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-white font-medium">
+                        <td className="px-4 py-2.5 text-center text-sm text-gray-900 dark:text-white font-medium whitespace-nowrap">
                           {event.ticketStats?.ticketsSold || 0}
                         </td>
-                        <td className="px-6 py-4 text-center text-sm text-gray-600 dark:text-gray-400">
+                        <td className="px-4 py-2.5 text-center text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
                           {event.ticketStats?.totalOrders || 0}
                         </td>
-                        <td className="px-6 py-4 text-center text-sm font-semibold text-green-600 dark:text-green-400">
+                        <td className="px-4 py-2.5 text-center text-sm font-semibold text-green-600 dark:text-green-400 whitespace-nowrap">
                           ${(event.ticketStats?.totalRevenue || 0).toFixed(2)}
                         </td>
                       </tr>

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Button from "@/components/ui/button/Button";
 import Input from "@/components/form/input/InputField";
 import { PlusIcon, TrashBinIcon } from "@/icons";
@@ -11,6 +12,7 @@ import { formatFloridaDateDDMMYYYY, formatFloridaTime } from "@/lib/utils/timezo
 import { getImageUrl } from "@/lib/utils/image-utils";
 
 export default function EventsPage() {
+  const router = useRouter();
   const supabase = createClient();
   const [events, setEvents] = useState<any[]>([]);
   const [allEvents, setAllEvents] = useState<any[]>([]);
@@ -19,13 +21,14 @@ export default function EventsPage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<{ id: string; imagePath: string | null } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortDirection, setSortDirection] = useState<"desc" | "asc">("desc"); // "desc" = Upcoming/Newest first, older in last
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
     const { data: eventsData } = await supabase
       .from("events")
       .select("*")
-      .order("event_start", { ascending: true }); // Changed to ascending (earliest first)
+      .order("event_start", { ascending: false }); // Upcoming / newest first, older in last
     
     if (!eventsData) {
       setAllEvents([]);
@@ -73,28 +76,40 @@ export default function EventsPage() {
       })
     );
 
-    setAllEvents(eventsWithStats);
-    setEvents(eventsWithStats);
+    // Initial sort: upcoming / newest first (timeB - timeA)
+    const sorted = [...eventsWithStats].sort((a, b) => {
+      const timeA = new Date(a.event_start || 0).getTime();
+      const timeB = new Date(b.event_start || 0).getTime();
+      return timeB - timeA;
+    });
+
+    setAllEvents(sorted);
+    setEvents(sorted);
     setLoading(false);
   }, [supabase]);
 
-  // Filter events by search query
+  // Filter and sort events
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setEvents(allEvents);
-      return;
+    let result = [...allEvents];
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter((event) => {
+        const title = event.title?.toLowerCase() || "";
+        const location = event.location?.toLowerCase() || "";
+        const slug = event.slug?.toLowerCase() || "";
+        return title.includes(query) || location.includes(query) || slug.includes(query);
+      });
     }
 
-    const query = searchQuery.toLowerCase().trim();
-    const filtered = allEvents.filter((event) => {
-      const title = event.title?.toLowerCase() || "";
-      const location = event.location?.toLowerCase() || "";
-      const slug = event.slug?.toLowerCase() || "";
-      return title.includes(query) || location.includes(query) || slug.includes(query);
+    result.sort((a, b) => {
+      const timeA = new Date(a.event_start || 0).getTime();
+      const timeB = new Date(b.event_start || 0).getTime();
+      return sortDirection === "desc" ? timeB - timeA : timeA - timeB;
     });
 
-    setEvents(filtered);
-  }, [searchQuery, allEvents]);
+    setEvents(result);
+  }, [searchQuery, allEvents, sortDirection]);
 
   useEffect(() => {
     fetchEvents();
@@ -277,9 +292,9 @@ export default function EventsPage() {
         </Link>
       </div>
 
-      {/* Search Bar */}
-      <div className="flex gap-4 items-center">
-        <div className="flex-1 max-w-md">
+      {/* Search & Sort Controls */}
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <div className="flex gap-2 items-center flex-1 max-w-md">
           <Input
             type="text"
             placeholder="Search events by name..."
@@ -287,16 +302,43 @@ export default function EventsPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full"
           />
+          {searchQuery && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSearchQuery("")}
+            >
+              Clear
+            </Button>
+          )}
         </div>
-        {searchQuery && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSearchQuery("")}
+
+        {/* Sort Pill Buttons */}
+        <div className="flex items-center gap-1.5 self-start sm:self-auto">
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium mr-1">Sort:</span>
+          <button
+            type="button"
+            onClick={() => setSortDirection("desc")}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+              sortDirection === "desc"
+                ? "bg-[#F59E0B] text-black border-[#F59E0B] shadow-sm font-bold"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700 hover:border-gray-400"
+            }`}
           >
-            Clear
-          </Button>
-        )}
+            Upcoming First
+          </button>
+          <button
+            type="button"
+            onClick={() => setSortDirection("asc")}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+              sortDirection === "asc"
+                ? "bg-[#F59E0B] text-black border-[#F59E0B] shadow-sm font-bold"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700 hover:border-gray-400"
+            }`}
+          >
+            Oldest First
+          </button>
+        </div>
       </div>
 
       {/* Events Table - Horizontal Rows */}
@@ -305,31 +347,40 @@ export default function EventsPage() {
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                   Image
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                   Title
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                  Date
+                <th
+                  onClick={() => setSortDirection((prev) => (prev === "desc" ? "asc" : "desc"))}
+                  className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:text-[#F59E0B] transition-colors select-none whitespace-nowrap"
+                  title="Click to toggle sorting"
+                >
+                  <div className="inline-flex items-center gap-1">
+                    <span>Date</span>
+                    <span className="text-[#F59E0B] font-bold text-xs">
+                      {sortDirection === "desc" ? "↓" : "↑"}
+                    </span>
+                  </div>
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                   Time
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                   Location
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                   Tickets Sold
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                   Total Orders
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                   Revenue
                 </th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                   Actions
                 </th>
               </tr>
@@ -345,65 +396,73 @@ export default function EventsPage() {
                 events.map((event) => (
                   <tr
                     key={event.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors"
-          >
-                    <td className="px-6 py-4">
+                    onClick={() => router.push(`/events/${event.id}`)}
+                    className="hover:bg-gray-100/70 dark:hover:bg-white/[0.04] transition-colors cursor-pointer group"
+                  >
+                    <td className="px-4 py-3 whitespace-nowrap">
                       {event.image_path ? (
-              <img
-                src={getImageUrl(event.image_path, 'events') || ''}
-                alt={event.title}
-                          className="w-20 h-20 object-cover rounded-lg"
-              />
+                        <img
+                          src={getImageUrl(event.image_path, 'events') || ''}
+                          alt={event.title}
+                          className="w-12 h-14 object-cover rounded-lg border border-gray-200 dark:border-gray-800"
+                        />
                       ) : (
-                        <div className="w-20 h-20 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center">
-                          <span className="text-xs text-gray-400">No image</span>
+                        <div className="w-12 h-14 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center text-[10px] text-gray-400">
+                          No img
                         </div>
-            )}
+                      )}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="font-semibold text-gray-900 dark:text-white">
-                {event.title}
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-gray-900 dark:text-white text-sm max-w-[240px] truncate group-hover:text-brand-500 transition-colors" title={event.title}>
+                        {event.title}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
-                      {formatFloridaDateDDMMYYYY(event.event_start)}
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 font-mono whitespace-nowrap">
+                      {(() => {
+                        const formatted = formatFloridaDateDDMMYYYY(event.event_start);
+                        return formatted ? formatted.replace(/-/g, "/") : "-";
+                      })()}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                    <td className="px-4 py-3 text-xs sm:text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
                       {formatFloridaTime(event.event_start, 'h:mm a')}
                       {event.event_end && ` - ${formatFloridaTime(event.event_end, 'h:mm a')}`}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                    <td className="px-4 py-3 text-xs sm:text-sm text-gray-600 dark:text-gray-400 max-w-[160px] truncate" title={event.location || ''}>
                       {event.location || "-"}
                     </td>
-                    <td className="px-6 py-4 text-center text-sm text-gray-900 dark:text-white font-medium">
+                    <td className="px-4 py-3 text-center text-sm text-gray-900 dark:text-white font-medium whitespace-nowrap">
                       {event.ticketStats?.ticketsSold || 0}
                     </td>
-                    <td className="px-6 py-4 text-center text-sm text-gray-600 dark:text-gray-400">
+                    <td className="px-4 py-3 text-center text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
                       {event.ticketStats?.totalOrders || 0}
                     </td>
-                    <td className="px-6 py-4 text-center text-sm font-semibold text-green-600 dark:text-green-400">
+                    <td className="px-4 py-3 text-center text-sm font-semibold text-green-600 dark:text-green-400 whitespace-nowrap">
                       ${(event.ticketStats?.totalRevenue || 0).toFixed(2)}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex gap-2 justify-end">
+                    <td className="px-4 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex gap-2 justify-end items-center">
                         <Link href={`/events/${event.id}`}>
-                          <Button variant="outline" size="sm">
-                    Edit
-                  </Button>
-                </Link>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleDeleteClick(event.id, event.image_path);
-                  }}
-                  disabled={loading || deletingId === event.id}
-                          className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 bg-white text-red-600 hover:bg-red-50 hover:text-red-700 dark:bg-gray-800 dark:text-red-500 dark:border-gray-700 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                >
-                  <TrashBinIcon className="h-4 w-4" />
-                </button>
-              </div>
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center px-4 py-1.5 text-xs sm:text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 hover:border-gray-400 dark:hover:border-gray-600 transition-all cursor-pointer shadow-xs"
+                          >
+                            Edit
+                          </button>
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleDeleteClick(event.id, event.image_path);
+                          }}
+                          disabled={loading || deletingId === event.id}
+                          className="inline-flex items-center justify-center p-2 text-xs sm:text-sm font-medium rounded-lg border border-red-200 dark:border-red-900/50 bg-white dark:bg-gray-800 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 hover:border-red-300 dark:hover:border-red-800 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
+                          title="Delete Event"
+                        >
+                          <TrashBinIcon className="h-4 w-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
