@@ -5,7 +5,7 @@ import BackButton from "@/components/common/BackButton";
 import Button from "@/components/ui/button/Button";
 import { CheckCircleIcon, ErrorIcon, AlertIcon } from "@/icons";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
-import { formatFloridaTime } from "@/lib/utils/timezone";
+import { formatFloridaTime, formatEventSchedule } from "@/lib/utils/timezone";
 
 export default function TicketScanPage() {
   const [scanning, setScanning] = useState(false);
@@ -422,6 +422,20 @@ export default function TicketScanPage() {
                     <p className="font-semibold">{result.event_title}</p>
                   </div>
                 )}
+                {formatEventSchedule(result.event_start, result.event_end) && (
+                  <div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">Event Date & Time</p>
+                    <p className="font-semibold text-blue-600 dark:text-blue-400">
+                      {formatEventSchedule(result.event_start, result.event_end)}
+                    </p>
+                  </div>
+                )}
+                {result.event_location && (
+                  <div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">Location</p>
+                    <p className="font-semibold">{result.event_location}</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-xs text-gray-600 dark:text-gray-400">Checked In At</p>
                   <p className="font-semibold">
@@ -474,6 +488,11 @@ export default function TicketScanPage() {
                       {result.event_title && (
                         <p className="text-sm text-yellow-700 dark:text-yellow-400">
                           Event: {result.event_title}
+                        </p>
+                      )}
+                      {formatEventSchedule(result.event_start, result.event_end) && (
+                        <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                          Event Date & Time: {formatEventSchedule(result.event_start, result.event_end)}
                         </p>
                       )}
                       {result.redeemed_at && (
