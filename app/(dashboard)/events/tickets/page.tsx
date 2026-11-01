@@ -180,9 +180,21 @@ export default function EventTicketsPage() {
 
   const handleStatusUpdate = async (ticketId: string, newStatus: string) => {
     try {
+      const nowIso = new Date().toISOString();
+      const updateData: any = { status: newStatus };
+      if (newStatus === "used") {
+        updateData.checked_in = true;
+        updateData.checked_in_at = nowIso;
+        updateData.redeemed_at = nowIso;
+      } else if (newStatus === "valid") {
+        updateData.checked_in = false;
+        updateData.checked_in_at = null;
+        updateData.redeemed_at = null;
+      }
+
       const { error } = await supabase
         .from("purchased_tickets")
-        .update({ status: newStatus })
+        .update(updateData)
         .eq("id", ticketId);
 
       if (error) throw error;
@@ -190,12 +202,12 @@ export default function EventTicketsPage() {
       // Update the local state to reflect the change immediately
       setTickets((prev) =>
         prev.map((ticket) =>
-          ticket.id === ticketId ? { ...ticket, status: newStatus } : ticket
+          ticket.id === ticketId ? { ...ticket, ...updateData } : ticket
         )
       );
       setAllTickets((prev) =>
         prev.map((ticket) =>
-          ticket.id === ticketId ? { ...ticket, status: newStatus } : ticket
+          ticket.id === ticketId ? { ...ticket, ...updateData } : ticket
         )
       );
     } catch (error: any) {
@@ -326,7 +338,7 @@ export default function EventTicketsPage() {
               <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                 {tickets.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <td colSpan={7} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                       No tickets found
                     </td>
                   </tr>
@@ -368,8 +380,8 @@ export default function EventTicketsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-theme-sm text-gray-600 dark:text-gray-400">
-                        {ticket.redeemed_at
-                          ? formatFloridaTime(ticket.redeemed_at, 'MM-dd-yyyy h:mm a')
+                        {(ticket.redeemed_at || ticket.checked_in_at)
+                          ? formatFloridaTime(ticket.redeemed_at || ticket.checked_in_at, 'MM-dd-yyyy h:mm a')
                           : "—"}
                       </td>
                       <td className="px-6 py-4 text-right">

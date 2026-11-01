@@ -133,7 +133,10 @@ export default function NewEventPage() {
         .from("events")
         .insert({
         ...formData,
-          event_start: eventStartUTC,
+        slug: formData.slug?.trim()
+          ? formData.slug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/(^-|-$)/g, "")
+          : generateSlug(formData.title),
+        event_start: eventStartUTC,
           event_end: eventEndUTC,
         image_path: imagePath,
           base_ticket_price: formData.base_ticket_price !== "" && formData.base_ticket_price !== null && !isNaN(parseFloat(formData.base_ticket_price)) ? parseFloat(formData.base_ticket_price) : null,

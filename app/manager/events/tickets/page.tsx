@@ -294,8 +294,8 @@ export default function EventTicketsPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4 text-theme-sm text-gray-600 dark:text-gray-400">
-                          {ticket.redeemed_at
-                            ? formatFloridaTime(ticket.redeemed_at, 'MM-dd-yyyy h:mm a')
+                          {(ticket.redeemed_at || ticket.checked_in_at)
+                            ? formatFloridaTime(ticket.redeemed_at || ticket.checked_in_at, 'MM-dd-yyyy h:mm a')
                             : "—"}
                         </td>
                       </tr>
@@ -359,11 +359,11 @@ export default function EventTicketsPage() {
                         />
                       </div>
                     </div>
-                    {ticket.redeemed_at && (
+                    {(ticket.redeemed_at || ticket.checked_in_at) && (
                       <div>
                         <p className="text-xs text-gray-500 dark:text-gray-400">Redeemed At</p>
                         <p className="text-xs sm:text-sm text-gray-900 dark:text-white">
-                          {formatFloridaTime(ticket.redeemed_at, 'MM-dd-yyyy h:mm a')}
+                          {formatFloridaTime(ticket.redeemed_at || ticket.checked_in_at, 'MM-dd-yyyy h:mm a')}
                         </p>
                       </div>
                     )}

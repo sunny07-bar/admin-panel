@@ -269,6 +269,9 @@ export default function EditEventPage() {
         .from("events")
         .update({
           ...formData,
+          slug: formData.slug?.trim()
+            ? formData.slug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/(^-|-$)/g, "")
+            : formData.slug,
           event_start: eventStartUTC,
           event_end: eventEndUTC,
           image_path: imagePath,

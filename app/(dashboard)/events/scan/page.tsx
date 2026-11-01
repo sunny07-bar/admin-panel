@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { createClient } from "@/lib/supabase/client";
 import BackButton from "@/components/common/BackButton";
 import Button from "@/components/ui/button/Button";
 import { CheckCircleIcon, ErrorIcon, AlertIcon } from "@/icons";
@@ -9,104 +8,133 @@ import { Html5Qrcode } from "html5-qrcode";
 import { formatFloridaTime } from "@/lib/utils/timezone";
 
 export default function TicketScanPage() {
-  const supabase = createClient();
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [manualCode, setManualCode] = useState("");
   const [location, setLocation] = useState("");
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const videoRef = useRef<HTMLDivElement>(null);
+  const isProcessingRef = useRef<boolean>(false);
+
+  const stopScanning = async () => {
+    if (scannerRef.current) {
+      try {
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop();
+        }
+        await scannerRef.current.clear();
+      } catch (err) {
+        console.warn("Scanner stop/clear warning:", err);
+      } finally {
+        scannerRef.current = null;
+        setScanning(false);
+        isProcessingRef.current = false;
+      }
+    } else {
+      setScanning(false);
+      isProcessingRef.current = false;
+    }
+  };
 
   const startScanning = async () => {
     try {
-      setScanning(true);
       setResult(null);
+      isProcessingRef.current = false;
+
+      // Clean up previous scanner instance if one exists
+      if (scannerRef.current) {
+        try {
+          if (scannerRef.current.isScanning) {
+            await scannerRef.current.stop();
+          }
+          await scannerRef.current.clear();
+        } catch (e) {
+          // Ignore cleanup error
+        }
+        scannerRef.current = null;
+      }
+
+      setScanning(true);
 
       const html5QrCode = new Html5Qrcode("reader");
       scannerRef.current = html5QrCode;
 
-      await html5QrCode.start(
-        { facingMode: "environment" },
-        {
-          fps: 10,
-          qrbox: function(viewfinderWidth, viewfinderHeight) {
-            // Calculate square size (80% of the smaller dimension to ensure it fits)
-            // Return an object with width and height for square qrbox
-            const size = Math.min(viewfinderWidth, viewfinderHeight) * 0.8;
-            const squareSize = Math.min(size, 300); // Cap at 300px for performance
-            return { width: squareSize, height: squareSize };
-          },
+      const qrConfig = {
+        fps: 10,
+        qrbox: function(viewfinderWidth: number, viewfinderHeight: number) {
+          const size = Math.min(viewfinderWidth, viewfinderHeight) * 0.8;
+          const squareSize = Math.min(size, 300);
+          return { width: squareSize, height: squareSize };
         },
-        (decodedText) => {
-          handleQRCode(decodedText);
-        },
-        (errorMessage) => {
-          // Ignore scanning errors
-        }
-      );
+      };
+
+      const onScanSuccess = (decodedText: string) => {
+        // Prevent duplicate frame processing
+        if (isProcessingRef.current) return;
+        isProcessingRef.current = true;
+        handleQRCode(decodedText);
+      };
+
+      try {
+        // Try environment (back) camera first
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          qrConfig,
+          onScanSuccess,
+          () => {}
+        );
+      } catch (backCamError) {
+        console.warn("Back camera unavailable, falling back to default/front camera:", backCamError);
+        // Fallback to front or default camera (e.g. laptop webcam)
+        await html5QrCode.start(
+          { facingMode: "user" },
+          qrConfig,
+          onScanSuccess,
+          () => {}
+        );
+      }
     } catch (err: any) {
       console.error("Scanning error:", err);
       setResult({
         success: false,
         error: "scanning_error",
-        message: err.message || "Failed to start camera",
+        message: err.message || "Failed to start camera. Please verify camera permissions.",
       });
       setScanning(false);
-    }
-  };
-
-  const stopScanning = () => {
-    if (scannerRef.current) {
-      scannerRef.current
-        .stop()
-        .then(() => {
-          scannerRef.current = null;
-          setScanning(false);
-        })
-        .catch((err) => {
-          console.error("Stop error:", err);
-          setScanning(false);
-        });
+      isProcessingRef.current = false;
     }
   };
 
   const handleQRCode = async (qrData: string) => {
-    stopScanning();
+    // Stop scanning immediately to prevent duplicate reads
+    await stopScanning();
 
     try {
-      // Parse QR code data
-      let qrCodeData;
-      try {
-        qrCodeData = JSON.parse(qrData);
-      } catch (e) {
-        // If not JSON, treat as direct hash
-        qrCodeData = qrData;
-      }
-
-      // Use the admin panel's own API endpoint
       const response = await fetch("/api/tickets/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          qrCodeData: qrCodeData,
+          qrCodeData: qrData,
           location: location || "Main Entrance",
-          staffId: null, // You can get this from auth (e.g., from Clerk)
+          staffId: null,
         }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
         setResult({
           success: false,
-          error: errorData.error || "verification_error",
-          message: errorData.message || `HTTP ${response.status}: ${response.statusText}`,
-          ...(errorData.ticket_number && { ticket_number: errorData.ticket_number }),
-          ...(errorData.redeemed_at && { redeemed_at: errorData.redeemed_at }),
+          error: data.error || "verification_error",
+          message: data.message || `HTTP ${response.status}: ${response.statusText}`,
+          ticket_number: data.ticket_number,
+          customer_name: data.customer_name,
+          ticket_type: data.ticket_type,
+          event_title: data.event_title,
+          redeemed_at: data.redeemed_at,
         });
         return;
       }
 
-      const data = await response.json();
       setResult(data);
     } catch (error: any) {
       console.error("Verification error:", error);
@@ -115,11 +143,14 @@ export default function TicketScanPage() {
         error: "verification_error",
         message: error.message || "Failed to verify ticket. Please check your connection and try again.",
       });
+    } finally {
+      isProcessingRef.current = false;
     }
   };
 
   const handleManualEntry = async () => {
-    if (!manualCode.trim()) {
+    const code = manualCode.trim();
+    if (!code) {
       setResult({
         success: false,
         error: "empty_code",
@@ -128,13 +159,18 @@ export default function TicketScanPage() {
       return;
     }
 
-    await handleQRCode(manualCode);
+    await handleQRCode(code);
   };
 
   useEffect(() => {
     return () => {
       if (scannerRef.current) {
-        stopScanning();
+        try {
+          if (scannerRef.current.isScanning) {
+            scannerRef.current.stop();
+          }
+          scannerRef.current.clear();
+        } catch (e) {}
       }
     };
   }, []);
@@ -208,7 +244,7 @@ export default function TicketScanPage() {
                 onChange={(e) => setManualCode(e.target.value)}
                 placeholder="Enter ticket number or QR data"
                 className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-theme-sm dark:border-gray-800 dark:bg-gray-900"
-                onKeyPress={(e) => {
+                onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     handleManualEntry();
                   }
@@ -257,6 +293,12 @@ export default function TicketScanPage() {
                   <p className="text-xs text-gray-600 dark:text-gray-400">Ticket Type</p>
                   <p className="font-semibold">{result.ticket_type}</p>
                 </div>
+                {result.event_title && (
+                  <div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">Event</p>
+                    <p className="font-semibold">{result.event_title}</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-xs text-gray-600 dark:text-gray-400">Redeemed At</p>
                   <p className="font-semibold">
@@ -269,6 +311,7 @@ export default function TicketScanPage() {
                 onClick={() => {
                   setResult(null);
                   setManualCode("");
+                  startScanning();
                 }}
                 className="w-full"
               >
@@ -287,22 +330,32 @@ export default function TicketScanPage() {
                 </div>
               </div>
 
-              {result.error === "already_used" && (
+              {(result.error === "already_used" || result.error === "already_redeemed") && (
                 <div className="p-4 bg-yellow-50 dark:bg-yellow-500/20 rounded-lg">
                   <div className="flex items-start gap-2">
                     <AlertIcon className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
                     <div>
                       <p className="font-semibold text-yellow-800 dark:text-yellow-300">
-                        This ticket was already used
+                        This ticket was already used / checked in
                       </p>
                       {result.ticket_number && (
                         <p className="text-sm text-yellow-700 dark:text-yellow-400 mt-1">
                           Ticket #{result.ticket_number}
                         </p>
                       )}
+                      {result.customer_name && (
+                        <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                          Customer: {result.customer_name} ({result.ticket_type || "General"})
+                        </p>
+                      )}
+                      {result.event_title && (
+                        <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                          Event: {result.event_title}
+                        </p>
+                      )}
                       {result.redeemed_at && (
                         <p className="text-sm text-yellow-700 dark:text-yellow-400">
-                          Redeemed: {formatFloridaTime(result.redeemed_at, 'MM-dd-yyyy h:mm a')}
+                          Checked In: {formatFloridaTime(result.redeemed_at, 'MM-dd-yyyy h:mm a')}
                         </p>
                       )}
                     </div>
@@ -315,6 +368,7 @@ export default function TicketScanPage() {
                 onClick={() => {
                   setResult(null);
                   setManualCode("");
+                  startScanning();
                 }}
                 className="w-full"
               >
@@ -324,8 +378,7 @@ export default function TicketScanPage() {
           )}
         </div>
       </div>
-    </div>
+      </div>
     </>
   );
 }
-
