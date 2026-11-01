@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import BackButton from "@/components/common/BackButton";
 import Button from "@/components/ui/button/Button";
 import { CheckCircleIcon, ErrorIcon, AlertIcon } from "@/icons";
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { formatFloridaTime } from "@/lib/utils/timezone";
 
 export default function TicketScanPage() {
@@ -12,8 +12,35 @@ export default function TicketScanPage() {
   const [result, setResult] = useState<any>(null);
   const [manualCode, setManualCode] = useState("");
   const [location, setLocation] = useState("");
+  const [cameras, setCameras] = useState<Array<{ id: string; label: string }>>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>("");
+  const [isProcessing, setIsProcessing] = useState(false);
+
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const isProcessingRef = useRef<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Load available camera devices
+  useEffect(() => {
+    Html5Qrcode.getCameras()
+      .then((devices) => {
+        if (devices && devices.length > 0) {
+          setCameras(devices);
+          // Prefer back/rear camera if available
+          const backCam = devices.find((d) =>
+            /back|rear|environment/i.test(d.label)
+          );
+          setSelectedCameraId(backCam ? backCam.id : devices[0].id);
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not enumerate cameras automatically:", err);
+      });
+
+    return () => {
+      stopScanning();
+    };
+  }, []);
 
   const stopScanning = async () => {
     if (scannerRef.current) {
@@ -28,10 +55,12 @@ export default function TicketScanPage() {
         scannerRef.current = null;
         setScanning(false);
         isProcessingRef.current = false;
+        setIsProcessing(false);
       }
     } else {
       setScanning(false);
       isProcessingRef.current = false;
+      setIsProcessing(false);
     }
   };
 
@@ -39,43 +68,54 @@ export default function TicketScanPage() {
     try {
       setResult(null);
       isProcessingRef.current = false;
+      setIsProcessing(false);
 
-      // Clean up previous scanner instance if one exists
       if (scannerRef.current) {
-        try {
-          if (scannerRef.current.isScanning) {
-            await scannerRef.current.stop();
-          }
-          await scannerRef.current.clear();
-        } catch (e) {
-          // Ignore cleanup error
-        }
-        scannerRef.current = null;
+        await stopScanning();
       }
 
       setScanning(true);
 
-      const html5QrCode = new Html5Qrcode("reader");
+      const html5QrCode = new Html5Qrcode("reader", {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
+      });
       scannerRef.current = html5QrCode;
 
       const qrConfig = {
-        fps: 10,
-        qrbox: function(viewfinderWidth: number, viewfinderHeight: number) {
-          const size = Math.min(viewfinderWidth, viewfinderHeight) * 0.8;
-          const squareSize = Math.min(size, 300);
-          return { width: squareSize, height: squareSize };
+        fps: 15,
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          const size = Math.max(Math.floor(minEdge * 0.75), 200);
+          return { width: size, height: size };
         },
       };
 
       const onScanSuccess = (decodedText: string) => {
-        // Prevent duplicate frame processing
         if (isProcessingRef.current) return;
         isProcessingRef.current = true;
+        setIsProcessing(true);
         handleQRCode(decodedText);
       };
 
+      if (selectedCameraId) {
+        try {
+          await html5QrCode.start(
+            selectedCameraId,
+            qrConfig,
+            onScanSuccess,
+            () => {}
+          );
+          return;
+        } catch (camIdErr) {
+          console.warn("Could not start selected camera ID, trying constraints:", camIdErr);
+        }
+      }
+
       try {
-        // Try environment (back) camera first
         await html5QrCode.start(
           { facingMode: "environment" },
           qrConfig,
@@ -83,8 +123,7 @@ export default function TicketScanPage() {
           () => {}
         );
       } catch (backCamError) {
-        console.warn("Back camera unavailable, falling back to default/front camera:", backCamError);
-        // Fallback to front or default camera (e.g. laptop webcam)
+        console.warn("Back camera unavailable, falling back to front camera:", backCamError);
         await html5QrCode.start(
           { facingMode: "user" },
           qrConfig,
@@ -101,11 +140,11 @@ export default function TicketScanPage() {
       });
       setScanning(false);
       isProcessingRef.current = false;
+      setIsProcessing(false);
     }
   };
 
   const handleQRCode = async (qrData: string) => {
-    // Stop scanning immediately to prevent duplicate reads
     await stopScanning();
 
     try {
@@ -145,6 +184,7 @@ export default function TicketScanPage() {
       });
     } finally {
       isProcessingRef.current = false;
+      setIsProcessing(false);
     }
   };
 
@@ -162,37 +202,55 @@ export default function TicketScanPage() {
     await handleQRCode(code);
   };
 
-  useEffect(() => {
-    return () => {
-      if (scannerRef.current) {
-        try {
-          if (scannerRef.current.isScanning) {
-            scannerRef.current.stop();
-          }
-          scannerRef.current.clear();
-        } catch (e) {}
+  const handleImageFileScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setResult(null);
+      await stopScanning();
+
+      // Create a temporary instance to scan the uploaded file
+      const tempScanner = new Html5Qrcode("reader", {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false,
+      });
+
+      const decodedText = await tempScanner.scanFile(file, true);
+      await tempScanner.clear();
+
+      if (decodedText) {
+        handleQRCode(decodedText);
       }
-    };
-  }, []);
+    } catch (err: any) {
+      console.error("Error scanning uploaded image:", err);
+      setResult({
+        success: false,
+        error: "file_scan_failed",
+        message: "No QR code could be detected in the uploaded image. Please make sure the QR code is clearly visible and well-lit.",
+      });
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
 
   return (
     <>
       <style dangerouslySetInnerHTML={{
         __html: `
-          #reader video,
-          #reader canvas {
-            width: 100% !important;
-            height: 100% !important;
-            object-fit: cover;
-            aspect-ratio: 1 / 1;
-          }
           #reader {
             position: relative;
+            overflow: hidden;
+            width: 100% !important;
+            border-radius: 0.75rem;
           }
-          #reader > div {
+          #reader video {
             width: 100% !important;
             height: 100% !important;
-            aspect-ratio: 1 / 1;
+            object-fit: cover !important;
+            border-radius: 0.75rem;
           }
         `
       }} />
@@ -209,40 +267,98 @@ export default function TicketScanPage() {
             QR Code Scanner
           </h2>
 
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Location</label>
-            <input
-              type="text"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="e.g., Main Entrance, VIP Gate"
-              className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-theme-sm dark:border-gray-800 dark:bg-gray-900"
-            />
+          <div className="space-y-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Check-in Location</label>
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="e.g., Main Entrance, VIP Gate"
+                className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-theme-sm dark:border-gray-800 dark:bg-gray-900"
+              />
+            </div>
+
+            {cameras.length > 1 && (
+              <div>
+                <label className="block text-sm font-medium mb-1">Select Camera</label>
+                <select
+                  value={selectedCameraId}
+                  onChange={(e) => {
+                    setSelectedCameraId(e.target.value);
+                    if (scanning) {
+                      stopScanning().then(() => startScanning());
+                    }
+                  }}
+                  className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-theme-sm dark:border-gray-800 dark:bg-gray-900"
+                >
+                  {cameras.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label || `Camera ${c.id.slice(0, 5)}...`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div
             id="reader"
-            className="w-full aspect-square bg-gray-100 dark:bg-gray-800 rounded-lg mb-4 overflow-hidden max-w-md mx-auto"
-          />
+            className="w-full aspect-square bg-gray-100 dark:bg-gray-800 rounded-xl mb-4 overflow-hidden max-w-md mx-auto flex items-center justify-center border border-dashed border-gray-300 dark:border-gray-700"
+          >
+            {!scanning && (
+              <div className="text-center p-6 text-gray-400">
+                <svg className="h-16 w-16 mx-auto mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <p className="text-sm">Click Start Scanning or Upload an Image</p>
+              </div>
+            )}
+          </div>
 
-          {!scanning ? (
-            <Button onClick={startScanning} className="w-full">
-              Start Scanning
-            </Button>
-          ) : (
-            <Button variant="outline" onClick={stopScanning} className="w-full">
-              Stop Scanning
-            </Button>
-          )}
+          <div className="space-y-3">
+            {!scanning ? (
+              <Button onClick={startScanning} className="w-full">
+                Start Scanning
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={stopScanning} className="w-full">
+                Stop Scanning
+              </Button>
+            )}
+
+            {/* Upload QR Image Option */}
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageFileScan}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Scan from Photo / Image File
+              </Button>
+            </div>
+          </div>
 
           <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800">
-            <h3 className="text-sm font-semibold mb-2">Manual Entry</h3>
+            <h3 className="text-sm font-semibold mb-2">Manual Ticket Verification</h3>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={manualCode}
                 onChange={(e) => setManualCode(e.target.value)}
-                placeholder="Enter ticket number or QR data"
+                placeholder="Enter ticket number (e.g. TKT-20261102-ALAM01)"
                 className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-theme-sm dark:border-gray-800 dark:bg-gray-900"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -266,7 +382,7 @@ export default function TicketScanPage() {
               <svg className="h-16 w-16 mx-auto mb-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
               </svg>
-              <p>Scan a ticket QR code to verify</p>
+              <p>Scan a ticket QR code or upload an image to verify</p>
             </div>
           ) : result.success ? (
             <div className="space-y-4">
@@ -283,7 +399,7 @@ export default function TicketScanPage() {
               <div className="space-y-2 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
                 <div>
                   <p className="text-xs text-gray-600 dark:text-gray-400">Ticket Number</p>
-                  <p className="font-semibold">{result.ticket_number}</p>
+                  <p className="font-semibold text-lg">{result.ticket_number}</p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-600 dark:text-gray-400">Customer</p>
@@ -300,7 +416,7 @@ export default function TicketScanPage() {
                   </div>
                 )}
                 <div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">Redeemed At</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Checked In At</p>
                   <p className="font-semibold">
                     {formatFloridaTime(result.redeemed_at, 'MM-dd-yyyy h:mm a')}
                   </p>
